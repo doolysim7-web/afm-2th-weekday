@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>색상 팔레트 만들기</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>색상 팔레트 만들기</h1>
+    <p class="subtitle">한글로 색상 이름을 입력하면 채도별 5가지 팔레트를 만들어드려요</p>
+
+    <div class="input-row">
+      <input type="text" id="color-input" placeholder="예: 빨강, 하늘색, 민트, 연두, 보라…" class="text-input">
+      <button id="generate-btn">생성</button>
+    </div>
+
+    <div class="tag-list">
+      <button class="tag" data-color="빨강">빨강</button>
+      <button class="tag" data-color="주황">주황</button>
+      <button class="tag" data-color="노랑">노랑</button>
+      <button class="tag" data-color="연두">연두</button>
+      <button class="tag" data-color="초록">초록</button>
+      <button class="tag" data-color="하늘색">하늘색</button>
+      <button class="tag" data-color="파랑">파랑</button>
+      <button class="tag" data-color="남색">남색</button>
+      <button class="tag" data-color="보라">보라</button>
+      <button class="tag" data-color="분홍">분홍</button>
+      <button class="tag" data-color="민트">민트</button>
+      <button class="tag" data-color="갈색">갈색</button>
+      <button class="tag" data-color="회색">회색</button>
+      <button class="tag" data-color="검정">검정</button>
+      <button class="tag" data-color="흰색">흰색</button>
+    </div>
+
+    <div class="palette-area" id="palette-area" hidden>
+      <div class="palette-title" id="palette-title"></div>
+      <div class="swatches" id="swatches"></div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>D-day 카운터</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>D-day 카운터</h1>
+    <p class="subtitle">날짜를 입력하면 남은 날을 알려드려요</p>
+
+    <div class="input-group">
+      <label>이벤트 이름 (선택)</label>
+      <input type="text" id="event-name" placeholder="예: 시험, 여행, 기념일…" class="text-input">
+    </div>
+
+    <div class="input-group">
+      <label>목표 날짜</label>
+      <button id="date-btn" class="date-btn">
+        <span id="date-display">날짜를 선택하세요</span>
+        <span class="cal-icon">📅</span>
+      </button>
+    </div>
+
+    <!-- 달력 팝업 -->
+    <div class="calendar-popup" id="calendar-popup" hidden>
+      <div class="cal-header">
+        <button class="nav-btn" id="prev-month">&#8249;</button>
+        <div class="cal-title">
+          <button class="year-month-btn" id="year-btn"></button>년
+          <button class="year-month-btn" id="month-btn"></button>월
+        </div>
+        <button class="nav-btn" id="next-month">&#8250;</button>
+      </div>
+
+      <!-- 연도 선택 패널 -->
+      <div class="panel" id="year-panel" hidden>
+        <div class="panel-grid" id="year-grid"></div>
+      </div>
+
+      <!-- 월 선택 패널 -->
+      <div class="panel" id="month-panel" hidden>
+        <div class="panel-grid month-grid" id="month-grid"></div>
+      </div>
+
+      <!-- 날짜 그리드 -->
+      <div id="day-panel">
+        <div class="cal-weekdays">
+          <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+        </div>
+        <div class="cal-days" id="cal-days"></div>
+      </div>
+    </div>
+
+    <button id="calculate-btn">계산하기</button>
+
+    <div class="result" id="result" hidden>
+      <div class="dday-main" id="dday-main">
+        <div class="dday-label" id="dday-label"></div>
+        <div class="dday-value" id="dday-value"></div>
+        <div class="dday-date" id="dday-date"></div>
+      </div>
+
+      <div class="detail-cards">
+        <div class="detail-card">
+          <div class="detail-label">총 날수</div>
+          <div class="detail-value"><span id="total-days"></span>일</div>
+        </div>
+        <div class="detail-card">
+          <div class="detail-label">약</div>
+          <div class="detail-value"><span id="total-weeks"></span>주</div>
+        </div>
+        <div class="detail-card">
+          <div class="detail-label">약</div>
+          <div class="detail-value"><span id="total-months"></span>개월</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
