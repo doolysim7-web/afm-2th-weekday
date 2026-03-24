@@ -1,0 +1,338 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #f0f4ff;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.container {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  width: 400px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+h1 {
+  font-size: 24px;
+  color: #1a1a2e;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 32px;
+}
+
+.input-group {
+  text-align: left;
+  margin-bottom: 16px;
+}
+
+label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #444;
+  margin-bottom: 8px;
+}
+
+/* 날짜 선택 버튼 */
+.date-btn {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  font-size: 15px;
+  color: #333;
+  background: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: border-color 0.2s;
+  text-align: left;
+}
+
+.date-btn:hover {
+  border-color: #5c6bc0;
+}
+
+.date-btn.selected {
+  border-color: #5c6bc0;
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
+.cal-icon {
+  font-size: 18px;
+}
+
+/* 달력 팝업 */
+.calendar-popup {
+  border: 2px solid #e8eaf6;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: white;
+}
+
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.cal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a2e;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.year-month-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  color: #5c6bc0;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.year-month-btn:hover {
+  background: #e8eaf6;
+}
+
+.nav-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #5c6bc0;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  line-height: 1;
+}
+
+.nav-btn:hover {
+  background: #e8eaf6;
+}
+
+/* 요일 헤더 */
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+
+.cal-weekdays span {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #999;
+  padding: 4px 0;
+}
+
+.cal-weekdays span:first-child {
+  color: #e57373;
+}
+
+.cal-weekdays span:last-child {
+  color: #5c6bc0;
+}
+
+/* 날짜 그리드 */
+.cal-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.cal-days .day {
+  text-align: center;
+  padding: 7px 0;
+  font-size: 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.15s;
+}
+
+.cal-days .day:hover {
+  background: #e8eaf6;
+}
+
+.cal-days .day.today {
+  font-weight: 700;
+  color: #5c6bc0;
+}
+
+.cal-days .day.selected {
+  background: #5c6bc0;
+  color: white;
+  font-weight: 700;
+}
+
+.cal-days .day.sunday {
+  color: #e57373;
+}
+
+.cal-days .day.saturday {
+  color: #5c6bc0;
+}
+
+.cal-days .day.selected {
+  color: white !important;
+}
+
+.cal-days .day.empty {
+  cursor: default;
+}
+
+.cal-days .day.disabled {
+  color: #ddd;
+  cursor: not-allowed;
+}
+
+.cal-days .day.disabled:hover {
+  background: none;
+}
+
+/* 연도/월 선택 패널 */
+.panel {
+  margin-bottom: 8px;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.panel-grid .panel-item {
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.15s;
+}
+
+.panel-grid .panel-item:hover {
+  background: #e8eaf6;
+}
+
+.panel-grid .panel-item.selected {
+  background: #5c6bc0;
+  color: white;
+  font-weight: 700;
+}
+
+.month-grid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* 계산 버튼 */
+#calculate-btn {
+  width: 100%;
+  padding: 14px;
+  background: #5c6bc0;
+  color: white;
+  font-size: 16px;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-bottom: 0;
+}
+
+#calculate-btn:hover {
+  background: #3f51b5;
+}
+
+/* 결과 카드 */
+.result {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.age-card {
+  border: 2px solid #e8eaf6;
+  border-radius: 12px;
+  padding: 16px 20px;
+  text-align: left;
+}
+
+.age-card.main {
+  border-color: #5c6bc0;
+  background: #f5f7ff;
+}
+
+.card-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 500;
+  background: #5c6bc0;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+.badge.secondary {
+  background: #e0e0e0;
+  color: #666;
+}
+
+.card-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #1a1a2e;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.age-card.main .card-value {
+  color: #5c6bc0;
+}
+
+.card-desc {
+  font-size: 12px;
+  color: #999;
+}

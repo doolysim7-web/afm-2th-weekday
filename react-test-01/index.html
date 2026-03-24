@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Typography - Heading Slideshow</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"SF Pro Text"', '"Helvetica Neue"', 'Arial', 'sans-serif'],
+          },
+          colors: {
+            apple: {
+              blue: '#0071e3',
+              bluehover: '#0077ED',
+              gray: {
+                50: '#fbfbfd',
+                100: '#f5f5f7',
+                200: '#e8e8ed',
+                300: '#d2d2d7',
+                400: '#86868b',
+                500: '#6e6e73',
+                600: '#424245',
+                700: '#333336',
+                800: '#1d1d1f',
+                900: '#111111',
+              }
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    html, body, #root {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .transition-theme {
+      transition: background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease;
+    }
+
+    .toggle-track {
+      transition: background-color 0.3s ease;
+    }
+
+    .toggle-thumb {
+      transition: transform 0.3s ease;
+    }
+
+    /* Slide transition animations */
+    .slide-enter {
+      animation: slideIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+
+    .slide-exit {
+      animation: slideOut 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: scale(0.96) translateY(24px);
+      }
+      to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+    }
+
+    @keyframes slideOut {
+      from {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+      }
+      to {
+        opacity: 0;
+        transform: scale(0.96) translateY(-24px);
+      }
+    }
+
+    /* Spec pill fade in with stagger */
+    .spec-pill {
+      opacity: 0;
+      animation: pillFade 0.4s ease forwards;
+    }
+
+    @keyframes pillFade {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Progress dot pulse */
+    .dot-active {
+      animation: dotPulse 0.3s ease forwards;
+    }
+
+    @keyframes dotPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+
+    /* Arrow button hover glow */
+    .arrow-btn {
+      transition: all 0.2s ease;
+    }
+
+    .arrow-btn:hover:not(:disabled) {
+      transform: scale(1.1);
+    }
+
+    .arrow-btn:active:not(:disabled) {
+      transform: scale(0.95);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ========================================
+    // Heading Data
+    // ========================================
+    const HEADINGS = [
+      {
+        tag: 'H1',
+        emoji: '👑',
+        displaySize: 'text-6xl sm:text-7xl lg:text-8xl',
+        weight: 'font-bold',
+        korean: '대제목',
+        english: 'Display Title',
+        desc: '페이지의 최상위 제목. 한 페이지에 하나만 사용합니다.',
+        specs: '48px / 60px',
+        lineHeight: '1.1',
+        letterSpacing: '-0.015em',
+        weightLabel: 'bold',
+        accentColor: 'from-blue-500 to-cyan-400',
+      },
+      {
+        tag: 'H2',
+        emoji: '📐',
+        displaySize: 'text-5xl sm:text-6xl lg:text-7xl',
+        weight: 'font-bold',
+        korean: '섹션 제목',
+        english: 'Section Title',
+        desc: '주요 섹션의 시작을 알리는 제목입니다.',
+        specs: '36px / 48px',
+        lineHeight: '1.15',
+        letterSpacing: '-0.01em',
+        weightLabel: 'bold',
+        accentColor: 'from-violet-500 to-purple-400',
+      },
+      {
+        tag: 'H3',
+        emoji: '🧩',
+        displaySize: 'text-4xl sm:text-5xl lg:text-6xl',
+        weight: 'font-semibold',
+        korean: '소제목',
+        english: 'Subsection Title',
+        desc: '섹션 내 하위 그룹을 구분하는 제목입니다.',
+        specs: '30px / 36px',
+        lineHeight: '1.2',
+        letterSpacing: '-0.005em',
+        weightLabel: 'semibold',
+        accentColor: 'from-pink-500 to-rose-400',
+      },
+      {
+        tag: 'H4',
+        emoji: '📦',
+        displaySize: 'text-3xl sm:text-4xl lg:text-5xl',
+        weight: 'font-semibold',
+        korean: '항목 제목',
+        english: 'Group Heading',
+        desc: '카드나 목록의 그룹 제목으로 적합합니다.',
+        specs: '24px / 30px',
+        lineHeight: '1.25',
+        letterSpacing: '0em',
+        weightLabel: 'semibold',
+        accentColor: 'from-orange-500 to-amber-400',
+      },
+      {
+        tag: 'H5',
+        emoji: '🔍',
+        displaySize: 'text-2xl sm:text-3xl lg:text-4xl',
+        weight: 'font-medium',
+        korean: '소항목 제목',
+        english: 'Detail Heading',
+        desc: '세부 항목이나 부가 정보의 제목입니다.',
+        specs: '20px / 24px',
+        lineHeight: '1.3',
+        letterSpacing: '0.01em',
+        weightLabel: 'medium',
+        accentColor: 'from-teal-500 to-emerald-400',
+      },
+      {
+        tag: 'H6',
+        emoji: '🏷️',
+        displaySize: 'text-xl sm:text-2xl lg:text-3xl',
+        weight: 'font-medium',
+        korean: '캡션 제목',
+        english: 'Caption Heading',
+        desc: '가장 작은 단위의 제목. 보조 텍스트에 사용합니다.',
+        specs: '18px / 20px',
+        lineHeight: '1.35',
+        letterSpacing: '0.015em',
+        weightLabel: 'medium',
+        accentColor: 'from-indigo-500 to-sky-400',
+      },
+    ];
+
+    // ========================================
+    // Design System Components
+    // ========================================
+
+    function ThemeToggle({ isDark, onToggle }) {
+      return (
+        <button
+          onClick={onToggle}
+          className="relative flex items-center gap-2 group"
+          aria-label={isDark ? '라이트 모드로 전환' : '다크 모드로 전환'}
+        >
+          <span className={`text-sm font-medium transition-theme ${
+            isDark ? 'text-apple-gray-400' : 'text-apple-gray-500'
+          }`}>
+            {isDark ? '다크' : '라이트'}
+          </span>
+          <div className={`toggle-track w-12 h-7 rounded-full p-0.5 cursor-pointer ${
+            isDark ? 'bg-apple-blue' : 'bg-apple-gray-300'
+          }`}>
+            <div className={`toggle-thumb w-6 h-6 rounded-full bg-white shadow-md ${
+              isDark ? 'transform translate-x-5' : 'transform translate-x-0'
+            }`} />
+          </div>
+        </button>
+      );
+    }
+
+    function ArrowButton({ direction, onClick, disabled, isDark }) {
+      const isLeft = direction === 'left';
+      return (
+        <button
+          onClick={onClick}
+          disabled={disabled}
+          className={`arrow-btn w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center border backdrop-blur-md ${
+            disabled
+              ? isDark
+                ? 'border-apple-gray-700/50 text-apple-gray-600 cursor-not-allowed opacity-40'
+                : 'border-apple-gray-200/50 text-apple-gray-300 cursor-not-allowed opacity-40'
+              : isDark
+                ? 'border-apple-gray-600 text-white hover:bg-white/10 hover:border-apple-gray-500'
+                : 'border-apple-gray-300 text-apple-gray-800 hover:bg-black/5 hover:border-apple-gray-400'
+          }`}
+          aria-label={isLeft ? '이전 슬라이드' : '다음 슬라이드'}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {isLeft
+              ? <polyline points="12,4 6,10 12,16" />
+              : <polyline points="8,4 14,10 8,16" />
+            }
+          </svg>
+        </button>
+      );
+    }
+
+    function ProgressDots({ current, total, isDark, onDotClick }) {
+      return (
+        <div className="flex items-center gap-3">
+          {Array.from({ length: total }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => onDotClick(i)}
+              className={`rounded-full transition-all duration-300 ${
+                i === current
+                  ? `w-8 h-2.5 bg-apple-blue ${isDark ? '' : ''} dot-active`
+                  : `w-2.5 h-2.5 ${isDark ? 'bg-apple-gray-600 hover:bg-apple-gray-500' : 'bg-apple-gray-300 hover:bg-apple-gray-400'}`
+              }`}
+              aria-label={`슬라이드 ${i + 1}로 이동`}
+              aria-current={i === current ? 'true' : 'false'}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    function SpecPill({ label, value, isDark, delay }) {
+      return (
+        <span
+          className={`spec-pill inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl ${
+            isDark
+              ? 'bg-white/5 border border-white/10 text-apple-gray-300'
+              : 'bg-black/[0.03] border border-black/[0.06] text-apple-gray-600'
+          }`}
+          style={{ animationDelay: `${delay}s` }}
+        >
+          <span className={isDark ? 'text-apple-gray-500' : 'text-apple-gray-400'}>{label}</span>
+          {value}
+        </span>
+      );
+    }
+
+    // ========================================
+    // Slide Component
+    // ========================================
+
+    function Slide({ heading, isDark, animationKey }) {
+      const h = heading;
+      return (
+        <div
+          key={animationKey}
+          className="slide-enter absolute inset-0 flex flex-col items-center justify-center px-6 sm:px-12"
+        >
+          {/* Emoji */}
+          <div className="text-5xl sm:text-6xl lg:text-7xl mb-4 sm:mb-5">
+            {h.emoji}
+          </div>
+
+          {/* Tag Badge */}
+          <div className={`mb-6 sm:mb-8 inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold tracking-wider uppercase ${
+            isDark
+              ? 'bg-apple-blue/15 text-blue-400 border border-apple-blue/20'
+              : 'bg-apple-blue/8 text-apple-blue border border-apple-blue/15'
+          }`}>
+            <span className={`w-2 h-2 rounded-full bg-gradient-to-r ${h.accentColor}`} />
+            {`<${h.tag.toLowerCase()}>`}
+          </div>
+
+          {/* Main Heading Display */}
+          <div className="text-center mb-4 sm:mb-6">
+            <h2 className={`${h.displaySize} ${h.weight} tracking-tight leading-none ${
+              isDark ? 'text-white' : 'text-apple-gray-800'
+            }`}>
+              {h.korean}
+            </h2>
+            <p className={`mt-2 sm:mt-3 text-xl sm:text-2xl lg:text-3xl font-light tracking-tight ${
+              isDark ? 'text-apple-gray-500' : 'text-apple-gray-400'
+            }`}>
+              {h.english}
+            </p>
+          </div>
+
+          {/* Description */}
+          <p className={`text-base sm:text-lg max-w-lg text-center leading-relaxed mb-8 sm:mb-10 ${
+            isDark ? 'text-apple-gray-400' : 'text-apple-gray-500'
+          }`}>
+            {h.desc}
+          </p>
+
+          {/* Spec Pills */}
+          <div className="flex flex-wrap justify-center gap-3">
+            <SpecPill label="Size" value={h.specs} isDark={isDark} delay={0.25} />
+            <SpecPill label="Line Height" value={h.lineHeight} isDark={isDark} delay={0.35} />
+            <SpecPill label="Tracking" value={h.letterSpacing} isDark={isDark} delay={0.45} />
+            <SpecPill label="Weight" value={h.weightLabel} isDark={isDark} delay={0.55} />
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Header Component
+    // ========================================
+
+    function Header({ isDark, onToggle, current, total }) {
+      return (
+        <header className={`transition-theme fixed top-0 left-0 right-0 z-50 backdrop-blur-xl border-b ${
+          isDark
+            ? 'bg-apple-gray-900/80 border-apple-gray-700'
+            : 'bg-white/80 border-apple-gray-200'
+        }`}>
+          <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <svg width="20" height="24" viewBox="0 0 20 24" fill="none" className={isDark ? 'text-white' : 'text-apple-gray-800'}>
+                <path d="M15.6 12.7c0-2.5 2-3.7 2.1-3.8-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-2-.9-3.3-.8-1.7 0-3.3 1-4.1 2.5-1.8 3.1-.5 7.6 1.3 10.1.8 1.2 1.9 2.6 3.2 2.5 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8c1.4 0 2.3-1.2 3.1-2.5 1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4.1h.6zM13.1 5.3c.7-.9 1.2-2.1 1.1-3.3-1 0-2.3.7-3 1.6-.7.8-1.2 2-1.1 3.2 1.2.1 2.3-.6 3-1.5z" fill="currentColor"/>
+              </svg>
+              <span className={`text-sm font-semibold tracking-tight ${
+                isDark ? 'text-white' : 'text-apple-gray-800'
+              }`}>
+                Typography
+              </span>
+              <span className={`text-sm ${
+                isDark ? 'text-apple-gray-400' : 'text-apple-gray-500'
+              }`}>
+                Design System
+              </span>
+            </div>
+            <div className="flex items-center gap-5">
+              <span className={`text-xs font-medium tabular-nums ${
+                isDark ? 'text-apple-gray-400' : 'text-apple-gray-500'
+              }`}>
+                {current + 1} / {total}
+              </span>
+              <ThemeToggle isDark={isDark} onToggle={onToggle} />
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // ========================================
+    // App Component
+    // ========================================
+
+    function App() {
+      const [isDark, setIsDark] = useState(() => {
+        if (typeof window !== 'undefined' && window.matchMedia) {
+          return window.matchMedia('(prefers-color-scheme: dark)').matches;
+        }
+        return false;
+      });
+
+      const [currentSlide, setCurrentSlide] = useState(0);
+      const [animationKey, setAnimationKey] = useState(0);
+      const isAnimating = useRef(false);
+      const total = HEADINGS.length;
+
+      const toggleTheme = useCallback(() => {
+        setIsDark(prev => !prev);
+      }, []);
+
+      const goToSlide = useCallback((index) => {
+        if (isAnimating.current || index === currentSlide) return;
+        if (index < 0 || index >= total) return;
+        isAnimating.current = true;
+        setCurrentSlide(index);
+        setAnimationKey(prev => prev + 1);
+        setTimeout(() => {
+          isAnimating.current = false;
+        }, 500);
+      }, [currentSlide, total]);
+
+      const goNext = useCallback(() => {
+        goToSlide(currentSlide + 1);
+      }, [currentSlide, goToSlide]);
+
+      const goPrev = useCallback(() => {
+        goToSlide(currentSlide - 1);
+      }, [currentSlide, goToSlide]);
+
+      // Keyboard navigation
+      useEffect(() => {
+        function handleKeyDown(e) {
+          if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            goNext();
+          } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            goPrev();
+          }
+        }
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+          window.removeEventListener('keydown', handleKeyDown);
+        };
+      }, [goNext, goPrev]);
+
+      // Dark mode class toggle
+      useEffect(() => {
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }, [isDark]);
+
+      return (
+        <div className={`h-full flex flex-col transition-theme font-sans ${
+          isDark ? 'bg-apple-gray-900 text-white' : 'bg-white text-apple-gray-800'
+        }`}>
+          <Header isDark={isDark} onToggle={toggleTheme} current={currentSlide} total={total} />
+
+          {/* Slide Area */}
+          <main className="flex-1 relative overflow-hidden" style={{ paddingTop: '3.5rem' }}>
+            <Slide
+              heading={HEADINGS[currentSlide]}
+              isDark={isDark}
+              animationKey={animationKey}
+            />
+          </main>
+
+          {/* Bottom Controls */}
+          <footer className={`transition-theme relative z-10 border-t ${
+            isDark
+              ? 'bg-apple-gray-900/90 border-apple-gray-700 backdrop-blur-xl'
+              : 'bg-white/90 border-apple-gray-200 backdrop-blur-xl'
+          }`}>
+            <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
+              <ArrowButton
+                direction="left"
+                onClick={goPrev}
+                disabled={currentSlide === 0}
+                isDark={isDark}
+              />
+              <ProgressDots
+                current={currentSlide}
+                total={total}
+                isDark={isDark}
+                onDotClick={goToSlide}
+              />
+              <ArrowButton
+                direction="right"
+                onClick={goNext}
+                disabled={currentSlide === total - 1}
+                isDark={isDark}
+              />
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
