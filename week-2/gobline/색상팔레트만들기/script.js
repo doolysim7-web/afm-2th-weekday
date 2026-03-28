@@ -116,23 +116,32 @@ function generate(inputText) {
   hexColors.forEach((hex, i) => {
     const swatch = document.createElement('div');
     swatch.className = 'swatch';
-    swatch.style.background = hex;
+
+    const colorBlock = document.createElement('div');
+    colorBlock.className = 'swatch-color';
+    colorBlock.style.background = hex;
+
+    const info = document.createElement('div');
+    info.className = 'swatch-info';
+
+    const name = document.createElement('div');
+    name.className = 'swatch-name';
+    name.textContent = SHADE_NAMES[i];
 
     const label = document.createElement('div');
     label.className = 'swatch-label';
-    label.style.color = getTextColor(hex);
-    label.style.background = 'rgba(0,0,0,0.2)';
     label.textContent = hex.toUpperCase();
+
+    info.appendChild(name);
+    info.appendChild(label);
 
     // 클릭 시 HEX 복사
     swatch.addEventListener('click', () => {
       navigator.clipboard.writeText(hex.toUpperCase()).then(() => showToast(`${hex.toUpperCase()} 복사됨`));
     });
 
-    // 툴팁 (shade name)
-    swatch.title = `${SHADE_NAMES[i]} — ${hex.toUpperCase()}`;
-
-    swatch.appendChild(label);
+    swatch.appendChild(colorBlock);
+    swatch.appendChild(info);
     swatchesEl.appendChild(swatch);
   });
 

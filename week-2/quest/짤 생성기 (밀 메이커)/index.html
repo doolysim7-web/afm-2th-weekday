@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>짤 생성기 (밈 메이커)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    .drop-zone-active { border-color: #6366f1 !important; background-color: rgba(99, 102, 241, 0.1) !important; }
+    input[type="range"] { -webkit-appearance: none; height: 6px; border-radius: 3px; background: #d1d5db; }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+      background: #6366f1; cursor: pointer; border: 2px solid white; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    input[type="color"] { -webkit-appearance: none; border: none; width: 36px; height: 36px; border-radius: 8px; cursor: pointer; padding: 0; }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+    input[type="color"]::-webkit-color-swatch { border: 1px solid #d1d5db; border-radius: 6px; }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+
+    function Button({ children, onClick, variant = 'primary', size = 'md', disabled = false, className = '' }) {
+      const base = 'font-semibold rounded-lg transition-all duration-200 inline-flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+      const variants = {
+        primary: 'bg-indigo-500 hover:bg-indigo-600 text-white shadow-md hover:shadow-lg',
+        secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-700',
+        danger: 'bg-red-500 hover:bg-red-600 text-white shadow-md',
+        ghost: 'bg-transparent hover:bg-gray-100 text-gray-600',
+        success: 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md hover:shadow-lg',
+      };
+      const sizes = { sm: 'px-3 py-1.5 text-sm', md: 'px-4 py-2 text-sm', lg: 'px-6 py-3 text-base' };
+      return (
+        <button onClick={onClick} disabled={disabled}
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ children, className = '' }) {
+      return <div className={`bg-white rounded-xl shadow-sm border border-gray-100 ${className}`}>{children}</div>;
+    }
+
+    function Label({ children, className = '' }) {
+      return <label className={`block text-sm font-medium text-gray-700 mb-1 ${className}`}>{children}</label>;
+    }
+
+    function SliderField({ label, value, onChange, min, max, step = 1, unit = '' }) {
+      return (
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <Label className="mb-0">{label}</Label>
+            <span className="text-sm font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">{value}{unit}</span>
+          </div>
+          <input type="range" className="w-full" value={value} onChange={e => onChange(Number(e.target.value))}
+            min={min} max={max} step={step} />
+        </div>
+      );
+    }
+
+    function ColorField({ label, value, onChange }) {
+      return (
+        <div className="flex items-center gap-3">
+          <Label className="mb-0 flex-1">{label}</Label>
+          <input type="color" value={value} onChange={e => onChange(e.target.value)} />
+        </div>
+      );
+    }
+
+    function SelectField({ label, value, onChange, options }) {
+      return (
+        <div>
+          <Label>{label}</Label>
+          <select value={value} onChange={e => onChange(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent outline-none bg-white">
+            {options.map(opt => (
+              <option key={opt.value} value={opt.value} style={{ fontFamily: opt.value }}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🧩 Common Components
+    // ========================================
+
+    function Header() {
+      return (
+        <header className="bg-white border-b border-gray-200 shadow-sm">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center text-white text-xl">
+              M
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-800">짤 생성기</h1>
+              <p className="text-xs text-gray-400">밈 메이커</p>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    function DropZone({ onImageLoad }) {
+      const [isDragging, setIsDragging] = useState(false);
+      const inputRef = useRef(null);
+
+      const handleFile = (file) => {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = (e) => onImageLoad(e.target.result);
+        reader.readAsDataURL(file);
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer.files[0];
+        handleFile(file);
+      };
+
+      const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+      const handleDragLeave = () => setIsDragging(false);
+
+      return (
+        <div
+          onClick={() => inputRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200 ${
+            isDragging ? 'drop-zone-active' : 'border-gray-300 hover:border-indigo-400 hover:bg-gray-50'
+          }`}
+        >
+          <input ref={inputRef} type="file" accept="image/*" className="hidden"
+            onChange={e => handleFile(e.target.files[0])} />
+          <div className="text-4xl mb-2 text-gray-300">+</div>
+          <p className="text-sm text-gray-500 font-medium">이미지를 드래그하거나 클릭하여 업로드</p>
+          <p className="text-xs text-gray-400 mt-1">PNG, JPG, GIF, WebP</p>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 📄 App Component
+    // ========================================
+
+    const CANVAS_W = 600;
+    const CANVAS_H = 500;
+
+    const FONTS = [
+      { value: 'Impact', label: 'Impact' },
+      { value: 'Arial', label: 'Arial' },
+      { value: "'Noto Sans KR'", label: 'Noto Sans KR' },
+      { value: "'Comic Sans MS'", label: 'Comic Sans MS' },
+    ];
+
+    const BG_COLORS = ['#000000', '#ffffff', '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6'];
+
+    function wrapText(ctx, text, maxWidth) {
+      if (!text) return [];
+      const words = text.split('');
+      const lines = [];
+      let currentLine = '';
+
+      for (let i = 0; i < words.length; i++) {
+        const ch = words[i];
+        if (ch === '\n') {
+          lines.push(currentLine);
+          currentLine = '';
+          continue;
+        }
+        const testLine = currentLine + ch;
+        const metrics = ctx.measureText(testLine);
+        if (metrics.width > maxWidth && currentLine.length > 0) {
+          lines.push(currentLine);
+          currentLine = ch;
+        } else {
+          currentLine = testLine;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+      return lines;
+    }
+
+    let nextLayerId = 1;
+
+    function newLayer() {
+      return { id: nextLayerId++, text: '', x: 50, y: 50, fontSize: 36, textColor: '#ffffff', strokeColor: '#000000', strokeWidth: 3, fontFamily: 'Impact' };
+    }
+
+    function LayerEditor({ layer, onChange, onDelete }) {
+      const [open, setOpen] = useState(true);
+      const upd = (key, val) => onChange({ ...layer, [key]: val });
+      return (
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          {/* 헤더 */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50">
+            <button onClick={() => setOpen(o => !o)} className="flex-1 text-left text-sm font-medium text-gray-700 flex items-center gap-2">
+              <span className="text-indigo-400">{open ? '▾' : '▸'}</span>
+              {layer.text || '(텍스트 없음)'}
+            </button>
+            <button onClick={onDelete} className="text-xs text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition-colors">삭제</button>
+          </div>
+          {open && (
+            <div className="p-3 space-y-3 bg-white">
+              {/* 텍스트 */}
+              <div>
+                <Label>텍스트</Label>
+                <input type="text" value={layer.text} onChange={e => upd('text', e.target.value)}
+                  placeholder="표시할 텍스트를 입력하세요"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent outline-none" />
+              </div>
+              {/* 위치 */}
+              <div className="grid grid-cols-2 gap-3">
+                <SliderField label="X 위치" value={layer.x} onChange={v => upd('x', v)} min={0} max={100} unit="%" />
+                <SliderField label="Y 위치" value={layer.y} onChange={v => upd('y', v)} min={0} max={100} unit="%" />
+              </div>
+              {/* 스타일 */}
+              <SelectField label="폰트" value={layer.fontFamily} onChange={v => upd('fontFamily', v)} options={FONTS} />
+              <SliderField label="폰트 크기" value={layer.fontSize} onChange={v => upd('fontSize', v)} min={10} max={120} unit="px" />
+              <SliderField label="외곽선 두께" value={layer.strokeWidth} onChange={v => upd('strokeWidth', v)} min={0} max={10} unit="px" />
+              <div className="grid grid-cols-2 gap-3">
+                <ColorField label="텍스트 색상" value={layer.textColor} onChange={v => upd('textColor', v)} />
+                <ColorField label="외곽선 색상" value={layer.strokeColor} onChange={v => upd('strokeColor', v)} />
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const canvasRef = useRef(null);
+      const [imageSrc, setImageSrc] = useState(null);
+      const [bgColor, setBgColor] = useState(null);
+
+      const [topText, setTopText] = useState('');
+      const [bottomText, setBottomText] = useState('');
+      const [fontSize, setFontSize] = useState(40);
+      const [textColor, setTextColor] = useState('#ffffff');
+      const [strokeColor, setStrokeColor] = useState('#000000');
+      const [strokeWidth, setStrokeWidth] = useState(3);
+      const [fontFamily, setFontFamily] = useState('Impact');
+
+      const [layers, setLayers] = useState([]);
+
+      const imageObjRef = useRef(null);
+
+      useEffect(() => {
+        if (!imageSrc) { imageObjRef.current = null; return; }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => { imageObjRef.current = img; drawCanvas(); };
+        img.src = imageSrc;
+      }, [imageSrc]);
+
+      const drawCanvas = useCallback(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+        if (imageObjRef.current) {
+          const img = imageObjRef.current;
+          const scale = Math.min(CANVAS_W / img.width, CANVAS_H / img.height);
+          const w = img.width * scale;
+          const h = img.height * scale;
+          const x = (CANVAS_W - w) / 2;
+          const y = (CANVAS_H - h) / 2;
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+          ctx.drawImage(img, x, y, w, h);
+        } else if (bgColor) {
+          ctx.fillStyle = bgColor;
+          ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+        } else {
+          ctx.fillStyle = '#e5e7eb';
+          ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+          ctx.fillStyle = '#9ca3af';
+          ctx.font = '16px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('이미지를 업로드하거나 배경색을 선택하세요', CANVAS_W / 2, CANVAS_H / 2);
+          return;
+        }
+
+        // 상단/하단 텍스트 그리기
+        const drawFixed = (text, yBase, isTop, fs, tc, sc, sw, ff) => {
+          if (!text) return;
+          ctx.font = `900 ${fs}px ${ff}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = isTop ? 'top' : 'bottom';
+          const maxWidth = CANVAS_W - 40;
+          const lines = wrapText(ctx, text, maxWidth);
+          const lineHeight = fs * 1.2;
+          lines.forEach((line, i) => {
+            const ly = isTop ? yBase + i * lineHeight : yBase - (lines.length - 1 - i) * lineHeight;
+            if (sw > 0) {
+              ctx.strokeStyle = sc; ctx.lineWidth = sw * 2; ctx.lineJoin = 'round';
+              ctx.strokeText(line, CANVAS_W / 2, ly);
+            }
+            ctx.fillStyle = tc;
+            ctx.fillText(line, CANVAS_W / 2, ly);
+          });
+        };
+
+        drawFixed(topText, 20, true, fontSize, textColor, strokeColor, strokeWidth, fontFamily);
+        drawFixed(bottomText, CANVAS_H - 20, false, fontSize, textColor, strokeColor, strokeWidth, fontFamily);
+
+        // 자유 위치 레이어 그리기
+        layers.forEach(layer => {
+          if (!layer.text) return;
+          const cx = (layer.x / 100) * CANVAS_W;
+          const cy = (layer.y / 100) * CANVAS_H;
+          ctx.font = `900 ${layer.fontSize}px ${layer.fontFamily}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const maxWidth = CANVAS_W - 40;
+          const lines = wrapText(ctx, layer.text, maxWidth);
+          const lineHeight = layer.fontSize * 1.2;
+          const totalH = lines.length * lineHeight;
+          lines.forEach((line, i) => {
+            const ly = cy - totalH / 2 + i * lineHeight + lineHeight / 2;
+            if (layer.strokeWidth > 0) {
+              ctx.strokeStyle = layer.strokeColor;
+              ctx.lineWidth = layer.strokeWidth * 2;
+              ctx.lineJoin = 'round';
+              ctx.strokeText(line, cx, ly);
+            }
+            ctx.fillStyle = layer.textColor;
+            ctx.fillText(line, cx, ly);
+          });
+        });
+      }, [imageSrc, bgColor, topText, bottomText, fontSize, textColor, strokeColor, strokeWidth, fontFamily, layers]);
+
+      useEffect(() => { drawCanvas(); }, [drawCanvas]);
+
+      const handleImageLoad = (src) => { setBgColor(null); setImageSrc(src); };
+      const handleBgColor = (color) => { setImageSrc(null); imageObjRef.current = null; setBgColor(color); };
+
+      const handleDownload = (format) => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ts = Date.now();
+        const link = document.createElement('a');
+        if (format === 'png') { link.download = `meme_${ts}.png`; link.href = canvas.toDataURL('image/png'); }
+        else { link.download = `meme_${ts}.jpg`; link.href = canvas.toDataURL('image/jpeg', 0.95); }
+        link.click();
+      };
+
+      const handleReset = () => {
+        setImageSrc(null); setBgColor(null); imageObjRef.current = null;
+        setTopText(''); setBottomText('');
+        setFontSize(40); setTextColor('#ffffff'); setStrokeColor('#000000'); setStrokeWidth(3); setFontFamily('Impact');
+        setLayers([]);
+      };
+
+      const addLayer = () => setLayers(prev => [...prev, newLayer()]);
+      const updateLayer = (updated) => setLayers(prev => prev.map(l => l.id === updated.id ? updated : l));
+      const deleteLayer = (id) => setLayers(prev => prev.filter(l => l.id !== id));
+
+      const hasContent = imageSrc || bgColor;
+
+      return (
+        <div className="min-h-screen bg-gray-100">
+          <Header />
+          <main className="max-w-7xl mx-auto px-4 py-6">
+            <div className="flex flex-col lg:flex-row gap-6">
+
+              {/* Left: Canvas Preview */}
+              <div className="flex-shrink-0">
+                <Card className="p-4">
+                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">미리보기</h2>
+                  <div className="flex justify-center">
+                    <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H}
+                      className="rounded-lg border border-gray-200 max-w-full h-auto"
+                      style={{ maxWidth: CANVAS_W }} />
+                  </div>
+                  <div className="flex gap-3 mt-4">
+                    <Button variant="primary" className="flex-1" onClick={() => handleDownload('png')} disabled={!hasContent}>PNG 다운로드</Button>
+                    <Button variant="success" className="flex-1" onClick={() => handleDownload('jpg')} disabled={!hasContent}>JPG 다운로드</Button>
+                    <Button variant="ghost" onClick={handleReset}>초기화</Button>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Right: Settings Panel */}
+              <div className="flex-1 space-y-4">
+
+                {/* Image Upload */}
+                <Card className="p-5">
+                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">이미지 설정</h2>
+                  <DropZone onImageLoad={handleImageLoad} />
+                  <div className="mt-4">
+                    <Label>또는 배경색 선택</Label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {BG_COLORS.map(c => (
+                        <button key={c} onClick={() => handleBgColor(c)}
+                          className={`w-9 h-9 rounded-lg border-2 transition-all cursor-pointer hover:scale-110 ${bgColor === c ? 'border-indigo-500 ring-2 ring-indigo-300 scale-110' : 'border-gray-300'}`}
+                          style={{ backgroundColor: c }} />
+                      ))}
+                    </div>
+                  </div>
+                </Card>
+
+                {/* 상단/하단 텍스트 */}
+                <Card className="p-5">
+                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">상단 / 하단 텍스트</h2>
+                  <div className="space-y-3">
+                    <div>
+                      <Label>상단 텍스트</Label>
+                      <input type="text" value={topText} onChange={e => setTopText(e.target.value)}
+                        placeholder="상단에 표시할 텍스트"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent outline-none" />
+                    </div>
+                    <div>
+                      <Label>하단 텍스트</Label>
+                      <input type="text" value={bottomText} onChange={e => setBottomText(e.target.value)}
+                        placeholder="하단에 표시할 텍스트"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-400 focus:border-transparent outline-none" />
+                    </div>
+                  </div>
+                </Card>
+
+                {/* 상단/하단 텍스트 스타일 */}
+                <Card className="p-5">
+                  <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">상단/하단 스타일</h2>
+                  <div className="space-y-4">
+                    <SelectField label="폰트" value={fontFamily} onChange={setFontFamily} options={FONTS} />
+                    <SliderField label="폰트 크기" value={fontSize} onChange={setFontSize} min={16} max={120} unit="px" />
+                    <SliderField label="외곽선 두께" value={strokeWidth} onChange={setStrokeWidth} min={0} max={10} unit="px" />
+                    <div className="grid grid-cols-2 gap-4">
+                      <ColorField label="텍스트 색상" value={textColor} onChange={setTextColor} />
+                      <ColorField label="외곽선 색상" value={strokeColor} onChange={setStrokeColor} />
+                    </div>
+                  </div>
+                </Card>
+
+                {/* 자유 위치 텍스트 레이어 */}
+                <Card className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">자유 위치 텍스트</h2>
+                    <Button variant="primary" size="sm" onClick={addLayer}>+ 텍스트 추가</Button>
+                  </div>
+                  {layers.length === 0 && (
+                    <p className="text-sm text-gray-400 text-center py-4">+ 버튼으로 원하는 위치에 텍스트를 추가하세요</p>
+                  )}
+                  <div className="space-y-3">
+                    {layers.map(layer => (
+                      <LayerEditor key={layer.id} layer={layer} onChange={updateLayer} onDelete={() => deleteLayer(layer.id)} />
+                    ))}
+                  </div>
+                </Card>
+
+              </div>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

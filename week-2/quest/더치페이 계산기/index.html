@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>더치페이 계산기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+
+    @keyframes spin-roulette {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(1800deg); }
+    }
+    @keyframes bounce-in {
+      0% { transform: scale(0.3); opacity: 0; }
+      50% { transform: scale(1.05); }
+      70% { transform: scale(0.9); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+      20%, 40%, 60%, 80% { transform: translateX(4px); }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 5px rgba(12, 147, 231, 0.3); }
+      50% { box-shadow: 0 0 20px rgba(12, 147, 231, 0.6); }
+    }
+    @keyframes confetti-fall {
+      0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(60px) rotate(720deg); opacity: 0; }
+    }
+    @keyframes slide-up {
+      0% { transform: translateY(20px); opacity: 0; }
+      100% { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes rps-shake {
+      0%, 100% { transform: translateY(0); }
+      25% { transform: translateY(-15px); }
+      50% { transform: translateY(0); }
+      75% { transform: translateY(-10px); }
+    }
+    .animate-bounce-in { animation: bounce-in 0.5s ease-out; }
+    .animate-shake { animation: shake 0.5s ease-in-out; }
+    .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+    .animate-slide-up { animation: slide-up 0.4s ease-out; }
+    .animate-rps { animation: rps-shake 0.4s ease-in-out 3; }
+    .animate-confetti { animation: confetti-fall 1.5s ease-out forwards; }
+    .roulette-spin { animation: spin-roulette 3s cubic-bezier(0.17, 0.67, 0.12, 0.99) forwards; }
+
+    .method-card {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .method-card:hover {
+      transform: translateY(-4px);
+    }
+    .method-card.selected {
+      transform: scale(1.02);
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#f0f7ff', 100: '#e0effe', 200: '#bae0fd', 300: '#7cc8fb', 400: '#36adf6', 500: '#0c93e7', 600: '#0074c5', 700: '#005c9f', 800: '#044f83', 900: '#04426d' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useMemo, useCallback, useRef, useEffect } = React;
+
+    // ========================================
+    // 1. Design System Components
+    // ========================================
+
+    function Card({ children, className = '', onClick }) {
+      return (
+        <div onClick={onClick} className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-5 ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function Button({ children, variant = 'primary', size = 'md', onClick, disabled = false, className = '' }) {
+      const base = 'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none';
+      const variants = {
+        primary: 'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
+        secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+        danger: 'bg-red-50 text-red-600 hover:bg-red-100',
+        ghost: 'text-gray-500 hover:bg-gray-100',
+        success: 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm',
+      };
+      const sizes = {
+        sm: 'px-3 py-1.5 text-sm',
+        md: 'px-4 py-2.5 text-sm',
+        lg: 'px-6 py-3 text-base',
+      };
+      return (
+        <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant] || variants.primary} ${sizes[size]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ label, value, onChange, placeholder, type = 'text', suffix, prefix, className = '', min }) {
+      return (
+        <div className={className}>
+          {label && <label className="block text-sm font-medium text-gray-600 mb-1.5">{label}</label>}
+          <div className="relative">
+            {prefix && <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{prefix}</span>}
+            <input
+              type={type}
+              value={value}
+              onChange={onChange}
+              placeholder={placeholder}
+              min={min}
+              className={`w-full border border-gray-200 rounded-xl px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all placeholder:text-gray-300 ${prefix ? 'pl-8' : ''} ${suffix ? 'pr-10' : ''}`}
+            />
+            {suffix && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{suffix}</span>}
+          </div>
+        </div>
+      );
+    }
+
+    function RoundModeSelector({ roundMode, setRoundMode }) {
+      return (
+        <div>
+          <label className="block text-sm font-medium text-gray-600 mb-2">10원 단위 반올림</label>
+          <div className="flex gap-2">
+            {[
+              { key: 'none', label: '정확히' },
+              { key: 'up', label: '올림' },
+              { key: 'down', label: '내림' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setRoundMode(key)}
+                className={`flex-1 py-2 text-sm rounded-lg border transition-all ${
+                  roundMode === key
+                    ? 'border-brand-500 bg-brand-50 text-brand-700 font-medium'
+                    : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function MembersInput({ members, setMembers, nextId }) {
+      const addMember = () => {
+        setMembers(prev => [...prev, { id: nextId.current++, name: '' }]);
+      };
+      const removeLast = () => {
+        if (members.length <= 2) return;
+        setMembers(prev => prev.slice(0, -1));
+      };
+      const removeMember = (id) => {
+        if (members.length <= 2) return;
+        setMembers(prev => prev.filter(m => m.id !== id));
+      };
+      const updateName = (id, name) => {
+        setMembers(prev => prev.map(m => m.id === id ? { ...m, name } : m));
+      };
+      const setCount = (val) => {
+        const n = Math.max(2, Math.min(20, parseInt(val) || 2));
+        if (n > members.length) {
+          const toAdd = Array.from({ length: n - members.length }, () => ({ id: nextId.current++, name: '' }));
+          setMembers(prev => [...prev, ...toAdd]);
+        } else if (n < members.length) {
+          setMembers(prev => prev.slice(0, n));
+        }
+      };
+
+      return (
+        <Card>
+          <h3 className="text-sm font-medium text-gray-600 mb-3">참여 인원</h3>
+
+          {/* 인원수 컨트롤 */}
+          <div className="flex items-center gap-2 mb-4">
+            <input
+              type="number"
+              value={members.length}
+              min={2}
+              max={20}
+              onChange={e => setCount(e.target.value)}
+              className="w-20 border border-gray-200 rounded-xl px-3 py-2 text-base text-center font-bold focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+            />
+            <span className="text-sm text-gray-400">명</span>
+            <div className="flex gap-1 ml-auto">
+              <button
+                onClick={removeLast}
+                disabled={members.length <= 2}
+                className="px-3 py-2 rounded-xl text-sm font-bold bg-red-50 text-red-500 hover:bg-red-100 transition-all disabled:opacity-30 disabled:pointer-events-none"
+              >− 빼기</button>
+              <button
+                onClick={addMember}
+                disabled={members.length >= 20}
+                className="px-3 py-2 rounded-xl text-sm font-bold bg-brand-50 text-brand-600 hover:bg-brand-100 transition-all disabled:opacity-30 disabled:pointer-events-none"
+              >+ 추가</button>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {members.map((member, index) => (
+              <div key={member.id} className="flex items-center gap-2">
+                <span className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                  {index + 1}
+                </span>
+                <input
+                  type="text"
+                  value={member.name}
+                  onChange={(e) => updateName(member.id, e.target.value)}
+                  placeholder={`${index + 1}번 참여자`}
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent placeholder:text-gray-300"
+                />
+                <button
+                  onClick={() => removeMember(member.id)}
+                  disabled={members.length <= 2}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-all disabled:opacity-30 disabled:pointer-events-none"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      );
+    }
+
+    function Confetti({ show }) {
+      if (!show) return null;
+      const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F7DC6F', '#BB8FCE'];
+      return (
+        <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+          {Array.from({ length: 30 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute animate-confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 40}%`,
+                animationDelay: `${Math.random() * 0.5}s`,
+                animationDuration: `${1 + Math.random() * 1.5}s`,
+                fontSize: `${12 + Math.random() * 16}px`,
+                color: colors[i % colors.length],
+              }}
+            >
+              {['*', '+', 'o', '#'][i % 4]}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ========================================
+    // 2. Utility Functions
+    // ========================================
+
+    const formatNumber = (num) => Math.round(num).toLocaleString('ko-KR');
+    const getName = (member, index) => member.name || `${index + 1}번`;
+    const applyRound = (val, mode) => {
+      if (mode === 'up') return Math.ceil(val / 10) * 10;
+      if (mode === 'down') return Math.floor(val / 10) * 10;
+      return Math.round(val);
+    };
+
+    // ========================================
+    // 3. Method Components
+    // ========================================
+
+    // --- N빵하기 ---
+    function MethodEqual({ totalAmount, members, roundMode }) {
+      const total = parseInt(totalAmount) || 0;
+      const count = members.length;
+      if (total <= 0 || count <= 0) return null;
+
+      const perPerson = applyRound(total / count, roundMode);
+      const roundedTotal = perPerson * count;
+      const diff = roundedTotal - total;
+
+      return (
+        <div className="space-y-4 animate-slide-up">
+          <Card className="bg-gradient-to-br from-brand-600 to-brand-700 border-none text-white">
+            <div className="text-center">
+              <p className="text-brand-200 text-sm mb-1">1인당 금액</p>
+              <p className="text-4xl font-bold tracking-tight">{formatNumber(perPerson)}원</p>
+              {diff !== 0 && (
+                <p className="mt-3 text-brand-200 text-sm">
+                  {diff > 0 ? `+${formatNumber(diff)}원 더 걷힘` : `${formatNumber(Math.abs(diff))}원 부족`}
+                </p>
+              )}
+            </div>
+          </Card>
+          <Card>
+            <h3 className="text-sm font-medium text-gray-600 mb-3">인원별 금액</h3>
+            <div className="space-y-2">
+              {members.map((m, i) => (
+                <div key={m.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+                  <div className="flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold">{i + 1}</span>
+                    <span className="text-sm text-gray-700">{getName(m, i)}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-gray-900">{formatNumber(perPerson)}원</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // --- 몰빵하기 (룰렛) ---
+    function MethodRoulette({ totalAmount, members }) {
+      const [spinning, setSpinning] = useState(false);
+      const [winner, setWinner] = useState(null);
+      const [rotation, setRotation] = useState(0);
+      const total = parseInt(totalAmount) || 0;
+
+      const spin = () => {
+        if (members.length < 2 || spinning) return;
+        setWinner(null);
+        setSpinning(true);
+        const idx = Math.floor(Math.random() * members.length);
+        const segAngle = 360 / members.length;
+
+        setRotation(prev => {
+          // 포인터(상단, 0도)가 segment idx의 중앙에 오도록 역산
+          // 휠이 R도 회전 시 포인터는 휠 기준 (360 - R%360)%360 위치를 가리킴
+          // 원하는 위치: idx * segAngle + segAngle/2
+          const targetMod = (360 - (idx * segAngle + segAngle / 2)) % 360;
+          const currentMod = prev % 360;
+          let delta = (targetMod - currentMod + 360) % 360;
+          if (delta < 10) delta += 360; // 너무 작은 회전 방지
+          return prev + 1800 + delta;
+        });
+
+        setTimeout(() => {
+          setWinner(idx);
+          setSpinning(false);
+        }, 3000);
+      };
+
+      const segmentAngle = 360 / members.length;
+
+      return (
+        <div className="space-y-4 animate-slide-up">
+          <Card className="text-center">
+            <p className="text-gray-500 text-sm mb-4">룰렛을 돌려서 전액 결제할 사람을 정하세요!</p>
+
+            <div className="relative w-56 h-56 mx-auto mb-4">
+              {/* Pointer */}
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1 z-10 text-2xl">
+                <span role="img" aria-label="pointer">&#9660;</span>
+              </div>
+
+              {/* Roulette wheel */}
+              <div
+                className="w-full h-full rounded-full border-4 border-gray-200 relative overflow-hidden"
+                style={{
+                  transform: `rotate(${rotation}deg)`,
+                  transition: spinning ? 'transform 3s cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'none',
+                }}
+              >
+                {members.map((m, i) => {
+                  const colors = [
+                    'bg-red-400', 'bg-blue-400', 'bg-green-400', 'bg-yellow-400',
+                    'bg-purple-400', 'bg-pink-400', 'bg-indigo-400', 'bg-orange-400',
+                    'bg-teal-400', 'bg-cyan-400',
+                  ];
+                  const angle = i * segmentAngle;
+                  return (
+                    <div
+                      key={m.id}
+                      className={`absolute w-full h-full ${colors[i % colors.length]}`}
+                      style={{
+                        clipPath: members.length === 1
+                          ? 'none'
+                          : `polygon(50% 50%, ${50 + 50 * Math.sin(0)}% ${50 - 50 * Math.cos(0)}%, ${50 + 50 * Math.sin(segmentAngle * Math.PI / 180)}% ${50 - 50 * Math.cos(segmentAngle * Math.PI / 180)}%)`,
+                        transform: `rotate(${angle}deg)`,
+                        transformOrigin: '50% 50%',
+                      }}
+                    >
+                      <span
+                        className="absolute text-white text-xs font-bold"
+                        style={{
+                          left: '50%',
+                          top: '22%',
+                          transform: `translateX(-50%) rotate(${segmentAngle / 2}deg)`,
+                          transformOrigin: '50% 150%',
+                        }}
+                      >
+                        {getName(m, i)}
+                      </span>
+                    </div>
+                  );
+                })}
+                {/* Center circle */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-white rounded-full shadow-md flex items-center justify-center z-10">
+                  <span className="text-lg">&#127922;</span>
+                </div>
+              </div>
+            </div>
+
+            <Button onClick={spin} disabled={spinning || members.length < 2} size="lg" className="w-full">
+              {spinning ? '돌리는 중...' : '🎲 룰렛 돌리기!'}
+            </Button>
+          </Card>
+
+          {winner !== null && (
+            <Card className="bg-gradient-to-br from-amber-500 to-orange-600 border-none text-white animate-bounce-in">
+              <div className="text-center">
+                <p className="text-5xl mb-3">&#128176;</p>
+                <p className="text-amber-100 text-sm mb-1">오늘의 결제자</p>
+                <p className="text-3xl font-black">{getName(members[winner], winner)}</p>
+                {total > 0 && (
+                  <p className="mt-2 text-amber-100 text-lg font-bold">{formatNumber(total)}원 전액 결제!</p>
+                )}
+                <p className="mt-3 text-amber-200 text-xs italic">"지갑을 열어라..."</p>
+              </div>
+            </Card>
+          )}
+        </div>
+      );
+    }
+
+    // --- 차례로 내기 ---
+    function MethodTurnBased({ totalAmount, members }) {
+      const [currentTurn, setCurrentTurn] = useState(0);
+      const [payments, setPayments] = useState([]);
+      const [inputAmount, setInputAmount] = useState('');
+      const total = parseInt(totalAmount) || 0;
+
+      const paidSoFar = payments.reduce((sum, p) => sum + p.amount, 0);
+      const remaining = total - paidSoFar;
+      const isLastPerson = currentTurn === members.length - 1;
+      const isComplete = currentTurn >= members.length;
+
+      const currentPayer = members[currentTurn];
+      const currentPayerIndex = currentTurn;
+
+      useEffect(() => {
+        if (isLastPerson && total > 0) {
+          setInputAmount(String(remaining));
+        } else {
+          setInputAmount('');
+        }
+      }, [currentTurn]);
+
+      const confirmPayment = () => {
+        const amount = parseInt(inputAmount) || 0;
+        setPayments(prev => [...prev, { name: getName(currentPayer, currentPayerIndex), amount }]);
+        setCurrentTurn(prev => prev + 1);
+        setInputAmount('');
+      };
+
+      const reset = () => {
+        setCurrentTurn(0);
+        setPayments([]);
+        setInputAmount('');
+      };
+
+      if (isComplete) {
+        return (
+          <div className="space-y-4 animate-slide-up">
+            <Card className="bg-gradient-to-br from-emerald-500 to-teal-600 border-none text-white">
+              <div className="text-center">
+                <p className="text-5xl mb-3">🎉</p>
+                <p className="text-emerald-100 text-sm mb-1">모든 결제 완료!</p>
+                <p className="text-2xl font-black">{total > 0 ? `총 ${formatNumber(total)}원` : '결제 완료'}</p>
+              </div>
+            </Card>
+            <Card>
+              <h3 className="text-sm font-medium text-gray-600 mb-3">결제 내역</h3>
+              <div className="space-y-1">
+                {payments.map((p, i) => (
+                  <div key={i} className="flex justify-between text-sm py-1.5 border-b border-gray-50 last:border-0">
+                    <span className="text-gray-700 font-medium">{p.name}</span>
+                    <span className="text-gray-500">{p.amount > 0 ? `${formatNumber(p.amount)}원` : '-'}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+            <Button onClick={reset} size="lg" variant="secondary" className="w-full">처음부터 다시</Button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4 animate-slide-up">
+          <Card className="bg-gradient-to-br from-indigo-500 to-purple-600 border-none text-white">
+            <div className="text-center">
+              <p className="text-indigo-200 text-sm mb-1">
+                {isLastPerson ? '🎯 마지막 차례' : `${currentTurn + 1} / ${members.length} 번째`}
+              </p>
+              <p className="text-4xl font-black mb-2">🎯 {getName(currentPayer, currentPayerIndex)}</p>
+              {total > 0 && (
+                <p className="text-indigo-200">
+                  {isLastPerson ? `남은 금액: ${formatNumber(remaining)}원` : `지금까지 낸 금액: ${formatNumber(paidSoFar)}원`}
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {total > 0 && (
+            <Card>
+              <Input
+                label={isLastPerson ? `${getName(currentPayer, currentPayerIndex)}님의 남은 금액 (자동 계산)` : `${getName(currentPayer, currentPayerIndex)}님이 낼 금액`}
+                type="number"
+                value={inputAmount}
+                onChange={e => setInputAmount(e.target.value)}
+                suffix="원"
+                placeholder="금액 입력"
+              />
+              {isLastPerson && (
+                <p className="text-xs text-indigo-500 mt-1.5">💡 총액 {formatNumber(total)}원 - 이미 낸 {formatNumber(paidSoFar)}원 = {formatNumber(remaining)}원</p>
+              )}
+            </Card>
+          )}
+
+          <Button
+            onClick={confirmPayment}
+            disabled={total > 0 && !inputAmount}
+            size="lg"
+            variant="success"
+            className="w-full"
+          >
+            {isLastPerson ? '✅ 결제 완료!' : '결제 완료! 다음 사람으로'}
+          </Button>
+
+          {/* Queue */}
+          <Card>
+            <h3 className="text-sm font-medium text-gray-600 mb-3">결제 순서</h3>
+            <div className="space-y-2">
+              {members.map((m, i) => {
+                const isCurrent = i === currentTurn;
+                const isDone = i < currentTurn;
+                return (
+                  <div key={m.id} className={`flex items-center gap-3 p-2 rounded-lg transition-all ${isCurrent ? 'bg-indigo-50 ring-2 ring-indigo-300' : ''}`}>
+                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${isDone ? 'bg-emerald-400 text-white' : isCurrent ? 'bg-indigo-500 text-white' : 'bg-gray-100 text-gray-400'}`}>
+                      {isDone ? '✓' : i + 1}
+                    </span>
+                    <span className={`text-sm flex-1 ${isCurrent ? 'font-bold text-indigo-700' : isDone ? 'text-gray-400 line-through' : 'text-gray-500'}`}>
+                      {getName(m, i)}
+                    </span>
+                    {isDone && payments[i] && total > 0 && (
+                      <span className="text-xs text-gray-400">{formatNumber(payments[i].amount)}원</span>
+                    )}
+                    {isCurrent && <span className="text-xs text-indigo-500 font-bold">← 차례</span>}
+                    {i === members.length - 1 && !isDone && !isCurrent && (
+                      <span className="text-xs text-amber-500">남은금액</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    // --- 홀짝 내기 ---
+    function MethodOddEven({ totalAmount, members }) {
+      const [result, setResult] = useState(null);
+      const [animating, setAnimating] = useState(false);
+      const total = parseInt(totalAmount) || 0;
+
+      const roll = () => {
+        setAnimating(true);
+        setResult(null);
+        setTimeout(() => {
+          const diceResult = Math.floor(Math.random() * 6) + 1;
+          const isEven = diceResult % 2 === 0;
+          const oddTeam = members.filter((_, i) => i % 2 === 0);
+          const evenTeam = members.filter((_, i) => i % 2 === 1);
+          const losingTeam = isEven ? evenTeam : oddTeam;
+          const winningTeam = isEven ? oddTeam : evenTeam;
+          const perLoser = losingTeam.length > 0 ? applyRound(total / losingTeam.length, 'up') : 0;
+
+          setResult({ diceResult, isEven, oddTeam, evenTeam, losingTeam, winningTeam, perLoser });
+          setAnimating(false);
+        }, 1500);
+      };
+
+      const diceEmojis = ['', '\u2680', '\u2681', '\u2682', '\u2683', '\u2684', '\u2685'];
+
+      return (
+        <div className="space-y-4 animate-slide-up">
+          <Card>
+            <p className="text-gray-500 text-sm mb-4 text-center">주사위를 굴려 홀짝을 정하세요! 진 팀이 전체 금액을 나눠 냅니다.</p>
+
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="p-3 bg-blue-50 rounded-xl">
+                <p className="text-xs font-bold text-blue-600 mb-2 text-center">&#127535; 홀수 팀</p>
+                {members.filter((_, i) => i % 2 === 0).map((m, i) => (
+                  <p key={m.id} className="text-sm text-blue-700 text-center">{getName(m, i * 2)}</p>
+                ))}
+              </div>
+              <div className="p-3 bg-red-50 rounded-xl">
+                <p className="text-xs font-bold text-red-600 mb-2 text-center">&#127534; 짝수 팀</p>
+                {members.filter((_, i) => i % 2 === 1).map((m, i) => (
+                  <p key={m.id} className="text-sm text-red-700 text-center">{getName(m, i * 2 + 1)}</p>
+                ))}
+              </div>
+            </div>
+
+            <div className="text-center mb-4">
+              <span className={`text-6xl inline-block ${animating ? 'animate-shake' : ''}`}>
+                {result ? diceEmojis[result.diceResult] : '\u2684'}
+              </span>
+            </div>
+
+            <Button onClick={roll} disabled={animating || members.length < 2} size="lg" className="w-full">
+              {animating ? '굴리는 중...' : '\u2684 주사위 굴리기!'}
+            </Button>
+          </Card>
+
+          {result && (
+            <Card className={`border-none text-white animate-bounce-in ${result.isEven ? 'bg-gradient-to-br from-red-500 to-pink-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'}`}>
+              <div className="text-center">
+                <p className="text-5xl mb-2">{diceEmojis[result.diceResult]}</p>
+                <p className="text-xl font-bold mb-1">
+                  {result.diceResult} = {result.isEven ? '짝수!' : '홀수!'}
+                </p>
+                <p className="text-sm opacity-80 mb-3">
+                  {result.isEven ? '짝수 팀이 결제합니다!' : '홀수 팀이 결제합니다!'}
+                </p>
+                {total > 0 && result.losingTeam.length > 0 && (
+                  <div className="bg-white/20 rounded-xl p-3 mt-2">
+                    <p className="text-sm">결제 팀 1인당</p>
+                    <p className="text-2xl font-black">{formatNumber(result.perLoser)}원</p>
+                  </div>
+                )}
+              </div>
+            </Card>
+          )}
+        </div>
+      );
+    }
+
+    // --- 가위바위보 ---
+    function MethodRPS({ totalAmount, members, roundMode }) {
+      const [playing, setPlaying] = useState(false);
+      const [rounds, setRounds] = useState([]);
+      const [finalResult, setFinalResult] = useState(null);
+      const total = parseInt(totalAmount) || 0;
+
+      const rpsEmoji = { rock: '\u270a', scissors: '\u270c\ufe0f', paper: '\u270b' };
+      const rpsNames = { rock: '바위', scissors: '가위', paper: '보' };
+      const choices = ['rock', 'scissors', 'paper'];
+
+      const play = () => {
+        if (members.length < 2) return;
+        setPlaying(true);
+        setFinalResult(null);
+
+        // Simulate tournament
+        const results = members.map((m, i) => {
+          const choice = choices[Math.floor(Math.random() * 3)];
+          const wins = Math.floor(Math.random() * 3);
+          return { member: m, index: i, choice, wins };
+        });
+
+        // Sort by wins - lowest wins = loser
+        results.sort((a, b) => a.wins - b.wins);
+
+        const newRounds = [];
+        // Show 3 rounds of "matches"
+        for (let r = 0; r < 3; r++) {
+          const roundPicks = members.map((m, i) => ({
+            name: getName(m, i),
+            choice: choices[Math.floor(Math.random() * 3)],
+          }));
+          newRounds.push(roundPicks);
+        }
+
+        setTimeout(() => {
+          setRounds(newRounds);
+
+          // Calculate payment proportions: loser pays more
+          const totalWeight = results.length;
+          const payments = results.map((r, rankIndex) => {
+            // Rank 0 = most losses -> pays most
+            const weight = totalWeight - rankIndex;
+            return { ...r, weight };
+          });
+
+          const totalWeights = payments.reduce((s, p) => s + p.weight, 0);
+          const paymentList = payments.map(p => ({
+            ...p,
+            amount: applyRound((p.weight / totalWeights) * total, roundMode),
+          }));
+
+          setFinalResult(paymentList);
+          setPlaying(false);
+        }, 2000);
+      };
+
+      return (
+        <div className="space-y-4 animate-slide-up">
+          <Card className="text-center">
+            <p className="text-gray-500 text-sm mb-4">가위바위보 시뮬레이션! 많이 진 사람이 더 많이 냅니다.</p>
+
+            <div className={`text-6xl mb-4 ${playing ? 'animate-rps' : ''}`}>
+              {'\u270a'}{'\u270c\ufe0f'}{'\u270b'}
+            </div>
+
+            <Button onClick={play} disabled={playing || members.length < 2} size="lg" className="w-full">
+              {playing ? '시합 중...' : '\u270c\ufe0f 가위바위보 시작!'}
+            </Button>
+          </Card>
+
+          {finalResult && (
+            <Card className="animate-slide-up">
+              <h3 className="text-sm font-medium text-gray-600 mb-1">시합 결과</h3>
+              <p className="text-xs text-gray-400 mb-3">많이 진 순서대로 더 많이 냅니다</p>
+              <div className="space-y-2">
+                {finalResult.sort((a, b) => b.amount - a.amount).map((r, i) => (
+                  <div key={r.member.id} className={`flex items-center justify-between p-3 rounded-xl ${i === 0 ? 'bg-red-50 ring-2 ring-red-200' : 'bg-gray-50'}`}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{rpsEmoji[r.choice]}</span>
+                      <div>
+                        <p className={`text-sm font-semibold ${i === 0 ? 'text-red-700' : 'text-gray-700'}`}>
+                          {getName(r.member, r.index)}
+                          {i === 0 && ' (최다 패배!)'}
+                        </p>
+                        <p className="text-xs text-gray-400">{r.wins}승</p>
+                      </div>
+                    </div>
+                    <span className={`text-sm font-bold ${i === 0 ? 'text-red-600' : 'text-gray-600'}`}>
+                      {formatNumber(r.amount)}원
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between">
+                <span className="text-sm text-gray-400">합계</span>
+                <span className="text-sm font-bold">{formatNumber(finalResult.reduce((s, r) => s + r.amount, 0))}원</span>
+              </div>
+            </Card>
+          )}
+        </div>
+      );
+    }
+
+    // --- 연장자 할인 (나이 비율) ---
+    function MethodAgeRatio({ totalAmount, members, setMembers, roundMode }) {
+      const total = parseInt(totalAmount) || 0;
+
+      const updateAge = (id, age) => {
+        setMembers(prev => prev.map(m => m.id === id ? { ...m, age: age } : m));
+      };
+
+      const allAgesSet = members.every(m => m.age && parseInt(m.age) > 0);
+      const totalAge = members.reduce((s, m) => s + (parseInt(m.age) || 0), 0);
+
+      const payments = allAgesSet && total > 0 ? members.map((m, i) => {
+        const age = parseInt(m.age) || 0;
+        const ratio = age / totalAge;
+        return { member: m, index: i, age, ratio, amount: applyRound(total * ratio, roundMode) };
+      }) : null;
+
+      return (
+        <div className="space-y-4 animate-slide-up">
+          <Card>
+            <h3 className="text-sm font-medium text-gray-600 mb-1">나이를 입력하세요</h3>
+            <p className="text-xs text-gray-400 mb-3">나이 비율에 따라 금액이 정해집니다. 나이가 많을수록 더 냅니다!</p>
+            <div className="space-y-2">
+              {members.map((m, i) => (
+                <div key={m.id} className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 w-20 truncate">{getName(m, i)}</span>
+                  <input
+                    type="number"
+                    value={m.age || ''}
+                    onChange={(e) => updateAge(m.id, e.target.value)}
+                    placeholder="나이"
+                    min="1"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 placeholder:text-gray-300"
+                  />
+                  <span className="text-sm text-gray-400">세</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {payments && (
+            <Card className="animate-slide-up">
+              <h3 className="text-sm font-medium text-gray-600 mb-3">&#128180; 나이 비율 계산 결과</h3>
+              <div className="space-y-2">
+                {payments.sort((a, b) => b.amount - a.amount).map((p, i) => (
+                  <div key={p.member.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{p.age >= 40 ? '\ud83d\udc74' : p.age >= 30 ? '\ud83e\uddd1' : '\ud83e\uddd2'}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-700">{getName(p.member, p.index)}</p>
+                        <p className="text-xs text-gray-400">{p.age}세 ({(p.ratio * 100).toFixed(1)}%)</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-bold text-gray-900">{formatNumber(p.amount)}원</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-100 flex justify-between">
+                <span className="text-sm text-gray-400">합계</span>
+                <span className="text-sm font-bold">{formatNumber(payments.reduce((s, p) => s + p.amount, 0))}원</span>
+              </div>
+            </Card>
+          )}
+        </div>
+      );
+    }
+
+    // --- 형편껏 내기 ---
+    function MethodCustom({ totalAmount, members, setMembers }) {
+      const total = parseInt(totalAmount) || 0;
+
+      const updateCustomAmount = (id, amount) => {
+        setMembers(prev => prev.map(m => m.id === id ? { ...m, customAmount: amount } : m));
+      };
+
+      const currentSum = members.reduce((s, m) => s + (parseInt(m.customAmount) || 0), 0);
+      const remaining = total - currentSum;
+
+      return (
+        <div className="space-y-4 animate-slide-up">
+          <Card>
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-sm font-medium text-gray-600">각자 낼 금액 입력</h3>
+              <span className={`text-xs font-bold px-2 py-1 rounded-full ${remaining === 0 ? 'bg-green-100 text-green-700' : remaining > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
+                {remaining === 0 ? 'OK!' : remaining > 0 ? `${formatNumber(remaining)}원 부족` : `${formatNumber(Math.abs(remaining))}원 초과`}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {members.map((m, i) => (
+                <div key={m.id} className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 w-20 truncate">{getName(m, i)}</span>
+                  <div className="flex-1 relative">
+                    <input
+                      type="number"
+                      value={m.customAmount || ''}
+                      onChange={(e) => updateCustomAmount(m.id, e.target.value)}
+                      placeholder="0"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 placeholder:text-gray-300 pr-8"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">원</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {total > 0 && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-xl">
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-500">총 금액</span>
+                  <span className="font-semibold">{formatNumber(total)}원</span>
+                </div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-500">입력 합계</span>
+                  <span className="font-semibold">{formatNumber(currentSum)}원</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${remaining === 0 ? 'bg-green-500' : remaining > 0 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                    style={{ width: `${Math.min(100, (currentSum / (total || 1)) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {remaining !== 0 && total > 0 && (
+            <Card className={`border-none text-white ${remaining > 0 ? 'bg-gradient-to-br from-yellow-500 to-amber-600' : 'bg-gradient-to-br from-red-500 to-pink-600'}`}>
+              <div className="text-center">
+                <p className="text-lg font-bold">
+                  {remaining > 0 ? `\ud83d\ude25 아직 ${formatNumber(remaining)}원 부족해요!` : `\ud83d\ude33 ${formatNumber(Math.abs(remaining))}원 초과했어요!`}
+                </p>
+                <p className="text-sm opacity-80 mt-1">
+                  {remaining > 0 ? '누가 좀 더 내실 분?' : '돈을 돌려드려야 해요!'}
+                </p>
+              </div>
+            </Card>
+          )}
+
+          {remaining === 0 && total > 0 && (
+            <Card className="bg-gradient-to-br from-green-500 to-emerald-600 border-none text-white animate-bounce-in">
+              <div className="text-center">
+                <p className="text-4xl mb-2">&#127881;</p>
+                <p className="text-lg font-bold">딱 맞았어요!</p>
+                <p className="text-sm opacity-80">모든 금액이 정확히 채워졌습니다</p>
+              </div>
+            </Card>
+          )}
+        </div>
+      );
+    }
+
+    // ========================================
+    // 4. Method Definitions
+    // ========================================
+
+    const METHODS = [
+      { id: 'equal', emoji: '\ud83c\udf55', name: 'N빵하기', desc: '모두 똑같이 나눔', color: 'from-blue-500 to-cyan-500' },
+      { id: 'roulette', emoji: '\ud83d\udcb8', name: '몰빵하기', desc: '랜덤 한 명이 전액 결제!', color: 'from-amber-500 to-orange-500' },
+      { id: 'turn', emoji: '\ud83c\udfaf', name: '차례로 내기', desc: '다음에 낼 사람 지정', color: 'from-indigo-500 to-purple-500' },
+      { id: 'oddeven', emoji: '\ud83c\udfb2', name: '홀짝 내기', desc: '팀 나눠서 진 팀이 결제', color: 'from-red-500 to-pink-500' },
+      { id: 'rps', emoji: '\u270c\ufe0f', name: '가위바위보', desc: '진 사람이 더 많이!', color: 'from-green-500 to-teal-500' },
+      { id: 'age', emoji: '\ud83d\udc74', name: '연장자 할인', desc: '나이 비율로 계산', color: 'from-violet-500 to-fuchsia-500' },
+      { id: 'custom', emoji: '\ud83d\udc9d', name: '형편껏 내기', desc: '각자 원하는 만큼', color: 'from-rose-500 to-red-500' },
+    ];
+
+    // ========================================
+    // 5. App Component
+    // ========================================
+
+    function App() {
+      const [step, setStep] = useState('method'); // method, calculate
+      const [selectedMethod, setSelectedMethod] = useState(null);
+      const [totalAmount, setTotalAmount] = useState('');
+      const [members, setMembers] = useState([
+        { id: 1, name: '' },
+        { id: 2, name: '' },
+      ]);
+      const [roundMode, setRoundMode] = useState('none');
+      const [showConfetti, setShowConfetti] = useState(false);
+      const nextId = useRef(3);
+
+      const formatNumber = (num) => Math.round(num).toLocaleString('ko-KR');
+
+      const selectMethod = (method) => {
+        setSelectedMethod(method);
+        setStep('calculate');
+      };
+
+      const goBack = () => {
+        setStep('method');
+      };
+
+      const copyResult = () => {
+        const total = parseInt(totalAmount) || 0;
+        const method = METHODS.find(m => m.id === selectedMethod);
+        let lines = [
+          `[${method.emoji} ${method.name} 결과]`,
+          `총 금액: ${formatNumber(total)}원`,
+          `인원: ${members.length}명`,
+          '',
+        ];
+
+        if (selectedMethod === 'equal') {
+          const perPerson = applyRound(total / members.length, roundMode);
+          lines.push(`1인당: ${formatNumber(perPerson)}원`);
+          lines.push('');
+          members.forEach((m, i) => lines.push(`${getName(m, i)}: ${formatNumber(perPerson)}원`));
+        } else if (selectedMethod === 'custom') {
+          members.forEach((m, i) => lines.push(`${getName(m, i)}: ${formatNumber(parseInt(m.customAmount) || 0)}원`));
+        } else if (selectedMethod === 'age') {
+          const totalAge = members.reduce((s, m) => s + (parseInt(m.age) || 0), 0);
+          members.forEach((m, i) => {
+            const ratio = (parseInt(m.age) || 0) / totalAge;
+            lines.push(`${getName(m, i)} (${m.age}세): ${formatNumber(applyRound(total * ratio, roundMode))}원`);
+          });
+        } else {
+          lines.push(`방법: ${method.name} - ${method.desc}`);
+        }
+
+        navigator.clipboard.writeText(lines.join('\n')).then(() => {
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 2000);
+        });
+      };
+
+      const methodInfo = METHODS.find(m => m.id === selectedMethod);
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <Confetti show={showConfetti} />
+          <div className="max-w-md mx-auto px-4 py-6">
+            {/* Header */}
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center w-14 h-14 bg-brand-100 rounded-2xl mb-3">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900">더치페이 계산기</h1>
+              <p className="text-sm text-gray-400 mt-1">재미있게 나누어 계산하세요!</p>
+            </div>
+
+            {/* Step Indicator */}
+            <div className="flex items-center justify-center gap-2 mb-5">
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${step === 'method' ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                <span>1</span>
+                <span>방법 선택</span>
+              </div>
+              <div className="w-6 h-px bg-gray-300" />
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${step === 'calculate' ? 'bg-brand-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                <span>2</span>
+                <span>계산하기</span>
+              </div>
+            </div>
+
+            {/* Step 1: Method Selection */}
+            {step === 'method' && (
+              <div className="space-y-3 animate-slide-up">
+                {METHODS.map((method) => (
+                  <div
+                    key={method.id}
+                    onClick={() => selectMethod(method.id)}
+                    className={`method-card cursor-pointer bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md active:scale-[0.98]`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${method.color} flex items-center justify-center text-2xl flex-shrink-0 shadow-sm`}>
+                        {method.emoji}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-base font-bold text-gray-900">{method.name}</h3>
+                        <p className="text-sm text-gray-400">{method.desc}</p>
+                      </div>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Step 2: Calculate */}
+            {step === 'calculate' && (
+              <div className="space-y-4">
+                {/* Back + Method Banner */}
+                <div className="flex items-center gap-3">
+                  <button onClick={goBack} className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-all active:scale-95 flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                  {methodInfo && (
+                    <div className={`flex-1 flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r ${methodInfo.color} text-white`}>
+                      <span className="text-2xl">{methodInfo.emoji}</span>
+                      <div>
+                        <p className="font-bold text-sm">{methodInfo.name}</p>
+                        <p className="text-xs opacity-80">{methodInfo.desc}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Common Inputs */}
+                <Card>
+                  <Input
+                    label="총 금액"
+                    type="number"
+                    value={totalAmount}
+                    onChange={(e) => setTotalAmount(e.target.value)}
+                    placeholder="0"
+                    suffix="원"
+                  />
+                </Card>
+
+                {/* Members Input */}
+                <MembersInput members={members} setMembers={setMembers} nextId={nextId} />
+
+                {/* Round Mode - for methods that use it */}
+                {['equal', 'rps', 'age'].includes(selectedMethod) && (
+                  <Card>
+                    <RoundModeSelector roundMode={roundMode} setRoundMode={setRoundMode} />
+                  </Card>
+                )}
+
+                {/* Method-specific content */}
+                {selectedMethod === 'equal' && <MethodEqual totalAmount={totalAmount} members={members} roundMode={roundMode} />}
+                {selectedMethod === 'roulette' && <MethodRoulette totalAmount={totalAmount} members={members} />}
+                {selectedMethod === 'turn' && <MethodTurnBased totalAmount={totalAmount} members={members} />}
+                {selectedMethod === 'oddeven' && <MethodOddEven totalAmount={totalAmount} members={members} />}
+                {selectedMethod === 'rps' && <MethodRPS totalAmount={totalAmount} members={members} roundMode={roundMode} />}
+                {selectedMethod === 'age' && <MethodAgeRatio totalAmount={totalAmount} members={members} setMembers={setMembers} roundMode={roundMode} />}
+                {selectedMethod === 'custom' && <MethodCustom totalAmount={totalAmount} members={members} setMembers={setMembers} />}
+
+                {/* Copy Button */}
+                {parseInt(totalAmount) > 0 && (
+                  <Button variant="secondary" size="lg" onClick={copyResult} className="w-full">
+                    &#128203; 결과 복사하기
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Footer */}
+            <p className="text-center text-xs text-gray-300 mt-8">Made with React + Tailwind CSS</p>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 6. Rendering
+    // ========================================
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

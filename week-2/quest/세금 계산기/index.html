@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>세금 계산기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { 50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd', 400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' },
+            slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-100 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo } = React;
+
+    // ========================================
+    // 유틸리티 함수
+    // ========================================
+
+    function formatNumber(num) {
+      if (num === null || num === undefined || isNaN(num)) return '0';
+      return Math.floor(num).toLocaleString('ko-KR');
+    }
+
+    function formatWon(num) {
+      return formatNumber(num) + '원';
+    }
+
+    function parseInputNumber(str) {
+      if (!str) return 0;
+      const cleaned = str.replace(/,/g, '');
+      const num = parseInt(cleaned, 10);
+      return isNaN(num) ? 0 : num;
+    }
+
+    // ========================================
+    // 세금 계산 로직
+    // ========================================
+
+    const TAX_BRACKETS = [
+      { limit: 14000000, rate: 0.06, deduction: 0 },
+      { limit: 50000000, rate: 0.15, deduction: 1260000 },
+      { limit: 88000000, rate: 0.24, deduction: 5760000 },
+      { limit: 150000000, rate: 0.35, deduction: 15440000 },
+      { limit: 300000000, rate: 0.38, deduction: 19940000 },
+      { limit: 500000000, rate: 0.40, deduction: 25940000 },
+      { limit: 1000000000, rate: 0.42, deduction: 35940000 },
+      { limit: Infinity, rate: 0.45, deduction: 65940000 },
+    ];
+
+    function calcIncomeTax({ empIncome, empExpenses, rentalIncome, rentalExpenses, personalCount, otherDeduction }) {
+      const totalIncome = empIncome + rentalIncome;
+      const empAmount = Math.max(0, empIncome - empExpenses);
+      const rentalAmount = Math.max(0, rentalIncome - rentalExpenses);
+      const incomeAmount = empAmount + rentalAmount;
+      const personalDeduction = personalCount * 1500000;
+      const totalDeduction = personalDeduction + otherDeduction;
+      const taxableIncome = Math.max(0, incomeAmount - totalDeduction);
+
+      let rate = 0;
+      let deduction = 0;
+      for (const bracket of TAX_BRACKETS) {
+        if (taxableIncome <= bracket.limit) {
+          rate = bracket.rate;
+          deduction = bracket.deduction;
+          break;
+        }
+      }
+
+      const calculatedTax = Math.max(0, Math.floor(taxableIncome * rate - deduction));
+      const localTax = Math.floor(calculatedTax * 0.1);
+      const totalTax = calculatedTax + localTax;
+      const effectiveRate = totalIncome > 0 ? (totalTax / totalIncome) * 100 : 0;
+
+      return {
+        totalIncome,
+        empIncome, empExpenses, empAmount,
+        rentalIncome, rentalExpenses, rentalAmount,
+        incomeAmount,
+        personalDeduction,
+        otherDeduction,
+        totalDeduction,
+        taxableIncome,
+        rate,
+        deduction,
+        calculatedTax,
+        localTax,
+        totalTax,
+        effectiveRate,
+      };
+    }
+
+    function calcVAT(amount, vatRate, direction) {
+      if (direction === 'supply') {
+        const supplyAmount = amount;
+        const vat = Math.floor(supplyAmount * (vatRate / 100));
+        const total = supplyAmount + vat;
+        return { supplyAmount, vat, total, vatRate };
+      } else {
+        const total = amount;
+        const supplyAmount = Math.floor(total / (1 + vatRate / 100));
+        const vat = total - supplyAmount;
+        return { supplyAmount, vat, total, vatRate };
+      }
+    }
+
+    // ========================================
+    // 디자인 시스템 컴포넌트
+    // ========================================
+
+    function NumberInput({ label, value, onChange, placeholder, suffix = '원', disabled = false }) {
+      const displayValue = value > 0 ? formatNumber(value) : '';
+
+      const handleChange = (e) => {
+        const raw = e.target.value.replace(/,/g, '');
+        if (raw === '') { onChange(0); return; }
+        if (/^\d+$/.test(raw)) {
+          onChange(parseInt(raw, 10));
+        }
+      };
+
+      return (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-600 mb-1.5">{label}</label>
+          <div className="relative">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={displayValue}
+              onChange={handleChange}
+              placeholder={placeholder || '0'}
+              disabled={disabled}
+              className="w-full px-4 py-3 pr-10 border border-slate-300 rounded-xl text-right text-lg font-medium
+                         focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                         disabled:bg-slate-100 disabled:text-slate-400 transition-all"
+            />
+            {suffix && (
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">
+                {suffix}
+              </span>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    function CountInput({ label, value, onChange, min = 1, max = 20 }) {
+      return (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-600 mb-1.5">{label}</label>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onChange(Math.max(min, value - 1))}
+              className="w-10 h-10 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-lg transition-colors flex items-center justify-center"
+            >-</button>
+            <span className="w-12 text-center text-lg font-semibold text-slate-800">{value}</span>
+            <button
+              onClick={() => onChange(Math.min(max, value + 1))}
+              className="w-10 h-10 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-lg transition-colors flex items-center justify-center"
+            >+</button>
+            <span className="text-sm text-slate-500 ml-1">(1인당 150만원 공제)</span>
+          </div>
+        </div>
+      );
+    }
+
+    function RateInput({ label, value, onChange }) {
+      return (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-600 mb-1.5">{label}</label>
+          <div className="relative">
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={value}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v) && v >= 0 && v <= 100) onChange(v);
+                else if (e.target.value === '') onChange(0);
+              }}
+              className="w-full px-4 py-3 pr-10 border border-slate-300 rounded-xl text-right text-lg font-medium
+                         focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">%</span>
+          </div>
+        </div>
+      );
+    }
+
+    function ResultCard({ items, highlight }) {
+      return (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          {items.map((item, i) => {
+            const isHighlight = highlight === item.key;
+            return (
+              <div
+                key={i}
+                className={`flex justify-between items-center px-5 py-3.5 ${
+                  isHighlight
+                    ? 'bg-primary-600 text-white'
+                    : i % 2 === 0
+                    ? 'bg-white'
+                    : 'bg-slate-50'
+                } ${item.divider ? 'border-t-2 border-slate-300' : ''}`}
+              >
+                <span className={`text-sm ${isHighlight ? 'font-semibold text-white' : 'text-slate-600'}`}>
+                  {item.label}
+                </span>
+                <span className={`font-semibold ${isHighlight ? 'text-lg text-white' : 'text-slate-800'}`}>
+                  {item.value}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    function Button({ children, onClick, variant = 'primary', className = '' }) {
+      const base = 'px-6 py-3 rounded-xl font-medium text-sm transition-all active:scale-95';
+      const variants = {
+        primary: 'bg-primary-600 hover:bg-primary-700 text-white shadow-sm',
+        secondary: 'bg-slate-200 hover:bg-slate-300 text-slate-700',
+      };
+      return (
+        <button onClick={onClick} className={`${base} ${variants[variant]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function TabButton({ active, children, onClick }) {
+      return (
+        <button
+          onClick={onClick}
+          className={`flex-1 py-3 text-sm font-semibold rounded-xl transition-all ${
+            active
+              ? 'bg-white text-primary-600 shadow-sm'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function RadioGroup({ options, value, onChange }) {
+      return (
+        <div className="flex gap-2 mb-4">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => onChange(opt.value)}
+              className={`flex-1 py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition-all ${
+                value === opt.value
+                  ? 'border-primary-500 bg-primary-50 text-primary-700'
+                  : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // ========================================
+    // 종합소득세 탭
+    // ========================================
+
+    function IncomeTaxTab() {
+      const [empIncome, setEmpIncome] = useState(0);
+      const [empExpenses, setEmpExpenses] = useState(0);
+      const [rentalIncome, setRentalIncome] = useState(0);
+      const [rentalExpenses, setRentalExpenses] = useState(0);
+      const [personalCount, setPersonalCount] = useState(1);
+      const [otherDeduction, setOtherDeduction] = useState(0);
+
+      const result = useMemo(() => {
+        if (empIncome <= 0 && rentalIncome <= 0) return null;
+        return calcIncomeTax({ empIncome, empExpenses, rentalIncome, rentalExpenses, personalCount, otherDeduction });
+      }, [empIncome, empExpenses, rentalIncome, rentalExpenses, personalCount, otherDeduction]);
+
+      const handleReset = () => {
+        setEmpIncome(0); setEmpExpenses(0);
+        setRentalIncome(0); setRentalExpenses(0);
+        setPersonalCount(1); setOtherDeduction(0);
+      };
+
+      const resultItems = result ? [
+        { label: '직장소득', value: formatWon(result.empIncome), key: 'empIncome' },
+        { label: '(-) 직장 필요경비', value: formatWon(result.empExpenses), key: 'empExp' },
+        { label: '= 직장 소득금액', value: formatWon(result.empAmount), key: 'empAmount' },
+        { label: '임대소득', value: formatWon(result.rentalIncome), key: 'rentalIncome' },
+        { label: '(-) 임대 필요경비', value: formatWon(result.rentalExpenses), key: 'rentalExp' },
+        { label: '= 임대 소득금액', value: formatWon(result.rentalAmount), key: 'rentalAmount' },
+        { label: '합산 소득금액', value: formatWon(result.incomeAmount), key: 'incomeAmount', divider: true },
+        { label: '(-) 인적공제', value: formatWon(result.personalDeduction), key: 'personalDed' },
+        { label: '(-) 기타공제', value: formatWon(result.otherDeduction), key: 'otherDed' },
+        { label: '= 과세표준', value: formatWon(result.taxableIncome), key: 'taxable', divider: true },
+        { label: '적용 세율', value: (result.rate * 100).toFixed(0) + '%', key: 'rate' },
+        { label: '누진공제', value: formatWon(result.deduction), key: 'bracketDed' },
+        { label: '= 산출세액', value: formatWon(result.calculatedTax), key: 'calcTax', divider: true },
+        { label: '(+) 지방소득세 (10%)', value: formatWon(result.localTax), key: 'localTax' },
+        { label: '총 납부세액', value: formatWon(result.totalTax), key: 'totalTax', divider: true },
+        { label: '실효세율', value: result.effectiveRate.toFixed(2) + '%', key: 'effectiveRate' },
+      ] : [];
+
+      return (
+        <div>
+          {/* 직장소득 카드 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-4">
+            <h3 className="text-base font-semibold text-slate-800 mb-1">💼 직장소득</h3>
+            <p className="text-xs text-slate-400 mb-4">근로소득, 사업소득 등</p>
+            <NumberInput label="연간 급여 / 사업수입" value={empIncome} onChange={setEmpIncome} placeholder="0" />
+            <NumberInput label="필요경비 (선택)" value={empExpenses} onChange={setEmpExpenses} placeholder="0" />
+          </div>
+
+          {/* 임대소득 카드 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-4">
+            <h3 className="text-base font-semibold text-slate-800 mb-1">🏠 임대소득</h3>
+            <p className="text-xs text-slate-400 mb-4">부동산 임대수입</p>
+            <NumberInput label="연간 임대수입" value={rentalIncome} onChange={setRentalIncome} placeholder="0" />
+            <NumberInput label="임대 필요경비 (선택)" value={rentalExpenses} onChange={setRentalExpenses} placeholder="관리비, 수선비, 감가상각 등" />
+          </div>
+
+          {/* 공제 카드 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-5">
+            <h3 className="text-base font-semibold text-slate-800 mb-4">공제 정보</h3>
+            <CountInput label="인적공제 인원 (본인 포함)" value={personalCount} onChange={setPersonalCount} />
+            <NumberInput label="기타공제 (선택)" value={otherDeduction} onChange={setOtherDeduction} placeholder="0" />
+            <div className="mt-4">
+              <Button onClick={handleReset} variant="secondary" className="w-full">초기화</Button>
+            </div>
+          </div>
+
+          {result && (
+            <div>
+              <h3 className="text-base font-semibold text-slate-800 mb-3">계산 결과</h3>
+              <ResultCard items={resultItems} highlight="totalTax" />
+              <div className="mt-4 bg-primary-50 border border-primary-200 rounded-xl p-4">
+                <p className="text-sm text-primary-800">
+                  총수입 <span className="font-semibold">{formatWon(result.totalIncome)}</span> 기준,
+                  납부세액은 <span className="font-bold text-primary-700">{formatWon(result.totalTax)}</span>,
+                  실효세율 <span className="font-bold text-primary-700">{result.effectiveRate.toFixed(2)}%</span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!result && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
+              <p className="text-slate-400 text-sm">직장소득 또는 임대소득을 입력하면 자동 계산됩니다.</p>
+            </div>
+          )}
+
+          <div className="mt-5 bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+            <h4 className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wider">2024년 종합소득세 세율표</h4>
+            <div className="text-xs text-slate-500 space-y-1">
+              <p>1,400만원 이하: 6%</p>
+              <p>1,400만원 ~ 5,000만원: 15% (공제 126만원)</p>
+              <p>5,000만원 ~ 8,800만원: 24% (공제 576만원)</p>
+              <p>8,800만원 ~ 1.5억원: 35% (공제 1,544만원)</p>
+              <p>1.5억원 ~ 3억원: 38% (공제 1,994만원)</p>
+              <p>3억원 ~ 5억원: 40% (공제 2,594만원)</p>
+              <p>5억원 ~ 10억원: 42% (공제 3,594만원)</p>
+              <p>10억원 초과: 45% (공제 6,594만원)</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 부가가치세 탭
+    // ========================================
+
+    function VATTab() {
+      const [direction, setDirection] = useState('supply');
+      const [amount, setAmount] = useState(0);
+      const [vatRate, setVatRate] = useState(10);
+
+      const result = useMemo(() => {
+        if (amount <= 0) return null;
+        return calcVAT(amount, vatRate, direction);
+      }, [amount, vatRate, direction]);
+
+      const handleReset = () => {
+        setAmount(0);
+        setVatRate(10);
+        setDirection('supply');
+      };
+
+      const directionOptions = [
+        { value: 'supply', label: '공급가액 → 세액' },
+        { value: 'total', label: 'VAT포함가 → 역산' },
+      ];
+
+      const resultItems = result
+        ? [
+            { label: '공급가액', value: formatWon(result.supplyAmount), key: 'supply' },
+            { label: `부가가치세 (${result.vatRate}%)`, value: formatWon(result.vat), key: 'vat' },
+            { label: 'VAT 포함 합계', value: formatWon(result.total), key: 'total', divider: true },
+            { label: '적용 세율', value: result.vatRate + '%', key: 'rate' },
+          ]
+        : [];
+
+      return (
+        <div>
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 mb-5">
+            <h3 className="text-base font-semibold text-slate-800 mb-4">부가가치세 계산</h3>
+            <label className="block text-sm font-medium text-slate-600 mb-1.5">계산 방향</label>
+            <RadioGroup options={directionOptions} value={direction} onChange={setDirection} />
+            <NumberInput
+              label={direction === 'supply' ? '공급가액' : 'VAT 포함 금액'}
+              value={amount}
+              onChange={setAmount}
+              placeholder="금액을 입력하세요"
+            />
+            <RateInput label="세율" value={vatRate} onChange={setVatRate} />
+            <div className="flex gap-3 mt-5">
+              <Button onClick={handleReset} variant="secondary" className="flex-1">초기화</Button>
+            </div>
+          </div>
+
+          {result && (
+            <div>
+              <h3 className="text-base font-semibold text-slate-800 mb-3">계산 결과</h3>
+              <ResultCard items={resultItems} highlight="total" />
+            </div>
+          )}
+
+          {!result && (
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center">
+              <p className="text-slate-400 text-sm">금액을 입력하면 부가가치세가 자동으로 계산됩니다.</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ========================================
+    // App 컴포넌트
+    // ========================================
+
+    function App() {
+      const [activeTab, setActiveTab] = useState('income');
+
+      return (
+        <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200">
+          <div className="max-w-lg mx-auto px-4 py-6 pb-12">
+            {/* 헤더 */}
+            <div className="text-center mb-6">
+              <h1 className="text-2xl font-bold text-slate-800">세금 계산기</h1>
+              <p className="text-sm text-slate-500 mt-1">2024년 기준</p>
+            </div>
+
+            {/* 탭 */}
+            <div className="bg-slate-200 p-1.5 rounded-xl flex gap-1 mb-6">
+              <TabButton active={activeTab === 'income'} onClick={() => setActiveTab('income')}>
+                종합소득세
+              </TabButton>
+              <TabButton active={activeTab === 'vat'} onClick={() => setActiveTab('vat')}>
+                부가가치세
+              </TabButton>
+            </div>
+
+            {/* 탭 콘텐츠 */}
+            {activeTab === 'income' ? <IncomeTaxTab /> : <VATTab />}
+
+            {/* 푸터 */}
+            <p className="text-center text-xs text-slate-400 mt-8">
+              본 계산기는 참고용이며, 실제 세금은 세무사와 상담하시기 바랍니다.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 렌더링
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
