@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF 생성기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    .drag-over { border-color: #6366f1 !important; background-color: #eef2ff !important; }
+
+    .pdf-content h1 { font-size: 1.8em; font-weight: 700; margin-bottom: 0.6em; margin-top: 0.8em; color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.3em; }
+    .pdf-content h2 { font-size: 1.4em; font-weight: 600; margin-bottom: 0.5em; margin-top: 0.7em; color: #334155; }
+    .pdf-content h3 { font-size: 1.2em; font-weight: 600; margin-bottom: 0.4em; margin-top: 0.6em; color: #475569; }
+    .pdf-content p  { margin-bottom: 0.8em; line-height: 1.8; color: #334155; }
+    .pdf-content ul { margin-bottom: 0.8em; padding-left: 1.5em; }
+    .pdf-content li { margin-bottom: 0.4em; line-height: 1.7; color: #475569; }
+    .pdf-content strong { color: #1e293b; }
+    .pdf-content blockquote { border-left: 4px solid #6366f1; padding-left: 1em; margin: 1em 0; color: #64748b; font-style: italic; }
+
+    .theme-creative .pdf-content h1 { color: #7c3aed; border-bottom-color: #c4b5fd; }
+    .theme-creative .pdf-content h2 { color: #6d28d9; }
+    .theme-minimal .pdf-content h1 { font-size: 1.5em; border-bottom: 1px solid #e5e7eb; color: #111827; }
+    .theme-minimal .pdf-content h2 { font-size: 1.2em; color: #374151; }
+    .theme-minimal .pdf-content p, .theme-minimal .pdf-content li { color: #4b5563; font-size: 0.95em; }
+
+    @keyframes fade-in-up {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-fade-in-up { animation: fade-in-up 0.4s ease-out; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useCallback, useMemo } = React;
+
+    // ── 버튼 ──────────────────────────────────────────
+    function Button({ children, variant = 'primary', size = 'md', disabled, onClick, icon, className = '' }) {
+      const base = 'inline-flex items-center justify-center font-medium rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+      const v = {
+        primary: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-lg shadow-indigo-200',
+        secondary: 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 focus:ring-indigo-500',
+        success: 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500 shadow-lg shadow-emerald-200',
+        ghost: 'text-gray-600 hover:bg-gray-100 focus:ring-gray-500',
+      };
+      const s = { sm: 'px-3 py-1.5 text-sm gap-1.5', md: 'px-5 py-2.5 text-sm gap-2', lg: 'px-7 py-3.5 text-base gap-2.5' };
+      return (
+        <button className={`${base} ${v[variant]} ${s[size]} ${className}`} disabled={disabled} onClick={onClick}>
+          {icon && <span className="flex-shrink-0">{icon}</span>}
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ children, className = '', padding = true }) {
+      return <div className={`bg-white rounded-2xl shadow-sm border border-gray-100 ${padding ? 'p-6' : ''} ${className}`}>{children}</div>;
+    }
+
+    // ── 아이콘 ────────────────────────────────────────
+    const IconUpload = () => (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+      </svg>
+    );
+    const IconDownload = () => (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+    );
+    const IconDocument = () => (
+      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+      </svg>
+    );
+    const IconPaste = () => (
+      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+      </svg>
+    );
+
+    // ── 스텝퍼 ────────────────────────────────────────
+    function Stepper({ step }) {
+      const steps = [
+        { n: 1, label: '파일 업로드' },
+        { n: 2, label: '미리보기 & PDF 저장' },
+      ];
+      return (
+        <div className="flex items-center justify-center gap-0 mb-8">
+          {steps.map((s, i) => (
+            <React.Fragment key={s.n}>
+              <div className="flex items-center gap-2">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all ${
+                  step > s.n ? 'bg-emerald-500 text-white' :
+                  step === s.n ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' :
+                  'bg-gray-200 text-gray-500'
+                }`}>
+                  {step > s.n
+                    ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                    : s.n}
+                </div>
+                <span className={`text-sm font-medium hidden sm:inline ${step >= s.n ? 'text-gray-800' : 'text-gray-400'}`}>{s.label}</span>
+              </div>
+              {i < steps.length - 1 && (
+                <div className={`w-12 sm:w-20 h-0.5 mx-3 transition-colors ${step > s.n ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+    }
+
+    // ── 파일 업로드 ───────────────────────────────────
+    function FileUpload({ onLoad }) {
+      const [mode, setMode] = useState('upload');
+      const [drag, setDrag] = useState(false);
+      const [text, setText] = useState('');
+      const inputRef = useRef(null);
+
+      const readFile = useCallback((file) => {
+        if (!file) return;
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['txt', 'md'].includes(ext)) { alert('.txt 또는 .md 파일만 지원합니다.'); return; }
+        const reader = new FileReader();
+        reader.onload = (e) => onLoad(e.target.result, file.name.replace(/\.[^/.]+$/, ''));
+        reader.readAsText(file);
+      }, [onLoad]);
+
+      return (
+        <Card className="animate-fade-in-up">
+          {/* 탭 */}
+          <div className="flex gap-2 mb-5">
+            {[['upload', <IconUpload />, '파일 업로드'], ['paste', <IconPaste />, '직접 입력']].map(([m, icon, label]) => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${mode === m ? 'bg-indigo-100 text-indigo-700' : 'text-gray-500 hover:bg-gray-100'}`}>
+                {icon} {label}
+              </button>
+            ))}
+          </div>
+
+          {mode === 'upload' ? (
+            <div
+              className={`border-2 border-dashed rounded-2xl p-14 text-center cursor-pointer transition-all ${drag ? 'drag-over' : 'border-gray-300 hover:border-indigo-400 hover:bg-indigo-50/30'}`}
+              onDrop={(e) => { e.preventDefault(); setDrag(false); readFile(e.dataTransfer.files[0]); }}
+              onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+              onDragLeave={() => setDrag(false)}
+              onClick={() => inputRef.current?.click()}
+            >
+              <input ref={inputRef} type="file" accept=".txt,.md" className="hidden" onChange={(e) => readFile(e.target.files[0])} />
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-16 h-16 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                  <svg className="w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-gray-700 font-medium">파일을 끌어다 놓거나 클릭하여 선택</p>
+                  <p className="text-gray-400 text-sm mt-1">.txt, .md 파일 지원</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <textarea
+                value={text} onChange={(e) => setText(e.target.value)}
+                placeholder="여기에 내용을 입력하거나 붙여넣으세요..."
+                className="w-full h-56 px-4 py-3 border border-gray-300 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <div className="flex justify-end">
+                <Button onClick={() => text.trim() && onLoad(text, '문서_' + new Date().toISOString().slice(0, 10))} disabled={!text.trim()}>
+                  확인
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      );
+    }
+
+    // ── 테마 선택 ─────────────────────────────────────
+    function ThemeSelector({ theme, setTheme }) {
+      const themes = [
+        { id: 'professional', label: 'Professional', desc: '깔끔하고 전문적', dot: 'bg-slate-800' },
+        { id: 'creative',     label: 'Creative',     desc: '활기차고 현대적', dot: 'bg-gradient-to-r from-indigo-500 to-purple-500' },
+        { id: 'minimal',      label: 'Minimal',      desc: '미니멀하고 간결', dot: 'bg-gray-300 border border-gray-400' },
+      ];
+      return (
+        <div className="flex gap-3">
+          {themes.map((t) => (
+            <button key={t.id} onClick={() => setTheme(t.id)}
+              className={`flex-1 p-3 rounded-xl border-2 text-left transition-all ${theme === t.id ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-4 h-4 rounded-full ${t.dot}`} />
+                <span className="text-sm font-semibold text-gray-800">{t.label}</span>
+              </div>
+              <p className="text-xs text-gray-500">{t.desc}</p>
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // ── PDF 내보내기 ──────────────────────────────────
+    function PdfExportButton({ content, fileName, theme }) {
+      const [exporting, setExporting] = useState(false);
+      const [savedDir, setSavedDir] = useState(null); // 기억된 폴더 핸들
+      const supportsFilePicker = typeof window.showSaveFilePicker === 'function';
+
+      const themeStyles = {
+        professional: { headerBg: '#1e293b', headerColor: '#ffffff' },
+        creative:     { headerBg: 'linear-gradient(135deg,#6366f1,#8b5cf6)', headerColor: '#ffffff' },
+        minimal:      { headerBg: '#ffffff', headerColor: '#111827' },
+      };
+
+      const buildContainer = useCallback(() => {
+        const ts = themeStyles[theme];
+        const isMinimal = theme === 'minimal';
+        const today = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+        const el = document.createElement('div');
+        el.style.cssText = "font-family:'Noto Sans KR',sans-serif;color:#334155;line-height:1.8;font-size:11pt;";
+        el.innerHTML = `
+          <div style="${isMinimal
+            ? 'padding:24px 32px;border-bottom:2px solid #e5e7eb;margin-bottom:24px;'
+            : `background:${ts.headerBg};color:${ts.headerColor};padding:32px;margin-bottom:24px;`}">
+            <h1 style="margin:0;font-size:20pt;font-weight:700;color:${ts.headerColor};">${fileName || '문서'}</h1>
+            <p style="margin:6px 0 0;font-size:9pt;opacity:.7;color:${isMinimal ? '#9ca3af' : ts.headerColor};">${today}</p>
+          </div>
+          <div style="padding:0 32px 32px;" class="pdf-content theme-${theme}">
+            ${marked.parse(content || '')}
+          </div>`;
+        return el;
+      }, [content, fileName, theme]);
+
+      const exportPdf = useCallback(async () => {
+        setExporting(true);
+        const container = buildContainer();
+        document.body.appendChild(container);
+
+        try {
+          const pdfName = `${fileName || '문서'}.pdf`;
+
+          if (supportsFilePicker) {
+            // Blob으로 PDF 생성 후 파일 저장 다이얼로그
+            const blob = await html2pdf().set({
+              margin: [0, 0, 15, 0],
+              filename: pdfName,
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            }).from(container).outputPdf('blob');
+
+            const handle = await window.showSaveFilePicker({
+              suggestedName: pdfName,
+              types: [{ description: 'PDF 파일', accept: { 'application/pdf': ['.pdf'] } }],
+            });
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+          } else {
+            // 폴더 선택 미지원 브라우저 — 일반 다운로드
+            await html2pdf().set({
+              margin: [0, 0, 15, 0],
+              filename: pdfName,
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2, useCORS: true },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            }).from(container).save();
+          }
+        } catch (e) {
+          if (e.name !== 'AbortError') alert('PDF 생성 오류: ' + e.message);
+        } finally {
+          document.body.removeChild(container);
+          setExporting(false);
+        }
+      }, [buildContainer, fileName, supportsFilePicker]);
+
+      return (
+        <div className="flex flex-col items-end gap-1">
+          <Button variant="success" size="lg" onClick={exportPdf} disabled={exporting} icon={<IconDownload />}>
+            {exporting ? 'PDF 생성 중...' : 'PDF 다운로드'}
+          </Button>
+          {supportsFilePicker && (
+            <p className="text-xs text-gray-400">저장 위치를 직접 선택할 수 있습니다</p>
+          )}
+        </div>
+      );
+    }
+
+    // ── 미리보기 + PDF 저장 화면 ──────────────────────
+    function PreviewScreen({ content, fileName, onReset }) {
+      const [theme, setTheme] = useState('professional');
+
+      return (
+        <div className="space-y-4 animate-fade-in-up">
+          {/* 테마 + 다운로드 */}
+          <Card>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+              <div>
+                <h3 className="font-semibold text-gray-800">PDF 스타일 설정</h3>
+                <p className="text-xs text-gray-500 mt-0.5">테마를 선택하고 PDF로 저장하세요</p>
+              </div>
+              <PdfExportButton content={content} fileName={fileName} theme={theme} />
+            </div>
+            <ThemeSelector theme={theme} setTheme={setTheme} />
+          </Card>
+
+          {/* 내용 미리보기 */}
+          <Card padding={false}>
+            <div className="px-5 py-3 border-b border-gray-100">
+              <span className="text-sm font-semibold text-gray-700">문서 미리보기</span>
+            </div>
+            <div className={`p-6 pdf-content theme-${theme} max-h-[70vh] overflow-y-auto`}
+              dangerouslySetInnerHTML={{ __html: marked.parse(content || '') }} />
+          </Card>
+        </div>
+      );
+    }
+
+    // ── App ───────────────────────────────────────────
+    function App() {
+      const [content, setContent] = useState('');
+      const [fileName, setFileName] = useState('');
+
+      const step = content ? 2 : 1;
+
+      const handleLoad = useCallback((text, name) => {
+        setContent(text);
+        setFileName(name);
+      }, []);
+
+      const handleReset = useCallback(() => {
+        setContent('');
+        setFileName('');
+      }, []);
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-indigo-50/30">
+          <header className="bg-white/80 backdrop-blur-sm border-b border-gray-100 sticky top-0 z-50">
+            <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
+                  <IconDocument />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold text-gray-900">PDF 생성기</h1>
+                  <p className="text-xs text-gray-500">파일을 올리면 바로 PDF로 저장</p>
+                </div>
+              </div>
+              {step > 1 && (
+                <Button variant="ghost" size="sm" onClick={handleReset}>새로 시작</Button>
+              )}
+            </div>
+          </header>
+
+          <main className="max-w-3xl mx-auto px-4 py-8">
+            <Stepper step={step} />
+            {step === 1 && <FileUpload onLoad={handleLoad} />}
+            {step === 2 && <PreviewScreen content={content} fileName={fileName} onReset={handleReset} />}
+          </main>
+
+          <footer className="mt-16 border-t border-gray-100 bg-white/50">
+            <div className="max-w-3xl mx-auto px-4 py-6 text-center text-xs text-gray-400">
+              PDF 생성기 — .txt / .md 파일을 PDF로 변환합니다
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
