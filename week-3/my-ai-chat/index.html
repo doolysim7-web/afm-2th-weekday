@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마음이 - AI 심리상담</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    .chat-scroll::-webkit-scrollbar { width: 6px; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    @keyframes bounce-dot {
+      0%, 80%, 100% { transform: translateY(0); }
+      40% { transform: translateY(-6px); }
+    }
+    .dot-1 { animation: bounce-dot 1.2s infinite 0s; }
+    .dot-2 { animation: bounce-dot 1.2s infinite 0.2s; }
+    .dot-3 { animation: bounce-dot 1.2s infinite 0.4s; }
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .msg-animate { animation: fade-in 0.3s ease-out; }
+  </style>
+</head>
+<body class="bg-slate-50 h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useEffect, useCallback } = React;
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+
+    function Avatar({ isBot, className = '' }) {
+      if (isBot) {
+        return (
+          <div className={`w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-sm font-bold shadow-md flex-shrink-0 ${className}`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+        );
+      }
+      return (
+        <div className={`w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-md flex-shrink-0 ${className}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+          </svg>
+        </div>
+      );
+    }
+
+    function TypingIndicator() {
+      return (
+        <div className="flex items-end gap-2 msg-animate">
+          <Avatar isBot />
+          <div className="bg-white border border-slate-200 rounded-2xl rounded-bl-sm px-4 py-3 shadow-sm">
+            <div className="flex gap-1">
+              <span className="w-2 h-2 bg-slate-400 rounded-full dot-1 inline-block"></span>
+              <span className="w-2 h-2 bg-slate-400 rounded-full dot-2 inline-block"></span>
+              <span className="w-2 h-2 bg-slate-400 rounded-full dot-3 inline-block"></span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ChatBubble({ message }) {
+      const isUser = message.role === 'user';
+      return (
+        <div className={`flex items-end gap-2 msg-animate ${isUser ? 'flex-row-reverse' : ''}`}>
+          <Avatar isBot={!isUser} />
+          <div className={`max-w-[75%] px-4 py-3 rounded-2xl shadow-sm whitespace-pre-wrap leading-relaxed text-[15px] ${
+            isUser
+              ? 'bg-gradient-to-br from-blue-500 to-indigo-500 text-white rounded-br-sm'
+              : 'bg-white border border-slate-200 text-slate-700 rounded-bl-sm'
+          }`}>
+            {message.content}
+          </div>
+        </div>
+      );
+    }
+
+    function SuggestionChip({ text, onClick }) {
+      return (
+        <button
+          onClick={() => onClick(text)}
+          className="px-4 py-2 bg-white border border-slate-200 rounded-full text-sm text-slate-600 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-700 transition-all shadow-sm"
+        >
+          {text}
+        </button>
+      );
+    }
+
+    // ========================================
+    // 🧩 Layout Components
+    // ========================================
+
+    function Header({ onReset }) {
+      return (
+        <header className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white shadow-md">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-slate-800">마음이</h1>
+              <p className="text-xs text-emerald-600 font-medium">AI 심리상담사</p>
+            </div>
+          </div>
+          <button
+            onClick={onReset}
+            className="text-slate-400 hover:text-slate-600 transition-colors p-2 rounded-lg hover:bg-slate-100"
+            title="새 대화 시작"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </header>
+      );
+    }
+
+    function WelcomeScreen({ onSuggestionClick }) {
+      const suggestions = [
+        "요즘 스트레스를 많이 받아요",
+        "잠을 잘 못 자요",
+        "인간관계가 어려워요",
+        "불안한 마음이 들어요",
+        "자존감이 낮은 것 같아요",
+        "미래가 걱정돼요",
+      ];
+
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white shadow-lg mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">안녕하세요, 마음이예요</h2>
+          <p className="text-slate-500 mb-8 max-w-sm leading-relaxed">
+            편하게 이야기해 주세요.<br/>
+            당신의 마음을 함께 들여다보겠습니다.
+          </p>
+          <div className="flex flex-wrap justify-center gap-2 max-w-md">
+            {suggestions.map((text, i) => (
+              <SuggestionChip key={i} text={text} onClick={onSuggestionClick} />
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 mt-8 max-w-xs">
+            * AI 상담은 전문 심리상담을 대체할 수 없습니다.
+            위기 상황 시 자살예방상담전화 1393으로 연락해 주세요.
+          </p>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 📄 Chat Input Component
+    // ========================================
+
+    function ChatInput({ onSend, disabled }) {
+      const [text, setText] = useState('');
+      const textareaRef = useRef(null);
+
+      const handleSubmit = useCallback(() => {
+        const trimmed = text.trim();
+        if (!trimmed || disabled) return;
+        onSend(trimmed);
+        setText('');
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+        }
+      }, [text, disabled, onSend]);
+
+      const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          handleSubmit();
+        }
+      };
+
+      const handleInput = (e) => {
+        setText(e.target.value);
+        e.target.style.height = 'auto';
+        e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+      };
+
+      return (
+        <div className="bg-white border-t border-slate-200 px-4 py-3">
+          <div className="max-w-3xl mx-auto flex items-end gap-2">
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={handleInput}
+              onKeyDown={handleKeyDown}
+              placeholder="마음속 이야기를 편하게 적어주세요..."
+              rows={1}
+              disabled={disabled}
+              className="flex-1 resize-none rounded-2xl border border-slate-200 px-4 py-3 text-[15px] text-slate-700 placeholder-slate-400 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={disabled || !text.trim()}
+              className="w-11 h-11 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-white flex items-center justify-center shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19V5m0 0l-7 7m7-7l7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 App Component
+    // ========================================
+
+    const API_BASE_URL = window.location.origin;
+
+    function App() {
+      const [messages, setMessages] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const chatEndRef = useRef(null);
+
+      useEffect(() => {
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messages, loading]);
+
+      const sendMessage = useCallback(async (text) => {
+        const userMsg = { role: 'user', content: text };
+        const newMessages = [...messages, userMsg];
+        setMessages(newMessages);
+        setLoading(true);
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ messages: newMessages }),
+          });
+
+          const data = await res.json();
+
+          if (data.error) {
+            setMessages([...newMessages, { role: 'assistant', content: '죄송합니다, 일시적인 오류가 발생했어요. 잠시 후 다시 이야기해 주세요.' }]);
+          } else {
+            setMessages([...newMessages, { role: 'assistant', content: data.reply }]);
+          }
+        } catch (err) {
+          console.error(err);
+          setMessages([...newMessages, { role: 'assistant', content: '서버와 연결할 수 없어요. 인터넷 연결을 확인해 주세요.' }]);
+        } finally {
+          setLoading(false);
+        }
+      }, [messages]);
+
+      const handleReset = () => {
+        setMessages([]);
+      };
+
+      const hasMessages = messages.length > 0;
+
+      return (
+        <div className="h-screen flex flex-col bg-slate-50">
+          <Header onReset={handleReset} />
+
+          {!hasMessages ? (
+            <WelcomeScreen onSuggestionClick={sendMessage} />
+          ) : (
+            <div className="flex-1 overflow-y-auto chat-scroll px-4 py-6">
+              <div className="max-w-3xl mx-auto space-y-4">
+                {messages.map((msg, i) => (
+                  <ChatBubble key={i} message={msg} />
+                ))}
+                {loading && <TypingIndicator />}
+                <div ref={chatEndRef} />
+              </div>
+            </div>
+          )}
+
+          <ChatInput onSend={sendMessage} disabled={loading} />
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
