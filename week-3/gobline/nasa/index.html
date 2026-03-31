@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NASA APOD Magazine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      margin: 0;
+      background: #0a0a0a;
+    }
+    h1, h2, h3, .serif {
+      font-family: 'Playfair Display', serif;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    @keyframes pulse-star {
+      0%, 100% { opacity: 0.3; transform: scale(0.8); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+    .animate-pulse-star {
+      animation: pulse-star 1.5s ease-in-out infinite;
+    }
+    input[type="date"] {
+      color-scheme: dark;
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.7) sepia(1) saturate(3) hue-rotate(10deg);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    // ========================================
+    // Constants
+    // ========================================
+    const API_KEY = 'CKUiyEheme7seUbRz6pUbYfW6Nw5Af66eQ0kRorz';
+    const API_BASE = 'https://api.nasa.gov/planetary/apod';
+
+    // ── MyMemory 번역 (무료, 청크 분할) ─────────────────────────────
+    async function translateText(text) {
+      // 450자 이하 청크로 문장 분리
+      const sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
+      const chunks = [];
+      let cur = '';
+      for (const s of sentences) {
+        if ((cur + s).length > 450 && cur) {
+          chunks.push(cur.trim());
+          cur = s;
+        } else {
+          cur += s;
+        }
+      }
+      if (cur.trim()) chunks.push(cur.trim());
+
+      const results = await Promise.all(
+        chunks.map(async (chunk) => {
+          try {
+            const res  = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=en|ko`);
+            const data = await res.json();
+            return data.responseData?.translatedText || chunk;
+          } catch {
+            return chunk;
+          }
+        })
+      );
+      return results.join(' ');
+    }
+
+    function formatDate(date) {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function getToday() {
+      return formatDate(new Date());
+    }
+
+    function getDateNDaysAgo(n) {
+      const d = new Date();
+      d.setDate(d.getDate() - n);
+      return formatDate(d);
+    }
+
+    function formatDisplayDate(dateStr) {
+      const d = new Date(dateStr + 'T00:00:00');
+      const month = d.toLocaleString('ko-KR', { month: 'long' });
+      const day = d.getDate();
+      const year = d.getFullYear();
+      return `${year}년 ${month} ${day}일`;
+    }
+
+    // ========================================
+    // Design System Components
+    // ========================================
+    function LoadingScreen() {
+      return (
+        <div className="fixed inset-0 z-50 bg-[#0a0a0a] flex flex-col items-center justify-center">
+          <div className="text-amber-400 text-6xl animate-pulse-star mb-6">&#10022;</div>
+          <p className="text-gray-400 text-lg tracking-widest">우주를 불러오는 중...</p>
+        </div>
+      );
+    }
+
+    function ErrorCard({ message, onRetry }) {
+      return (
+        <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full text-center">
+            <div className="text-red-400 text-4xl mb-4">!</div>
+            <h2 className="serif text-white text-2xl mb-3">오류가 발생했습니다</h2>
+            <p className="text-gray-400 mb-6 text-sm leading-relaxed">{message}</p>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-medium rounded-lg transition-colors text-sm"
+              >
+                다시 시도
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Header Component
+    // ========================================
+    function Header({ selectedDate, onDateChange }) {
+      return (
+        <header className="fixed top-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-md border-b border-white/5">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 text-xl">&#10022;</span>
+              <span className="text-white font-bold text-lg tracking-wide">NASA</span>
+              <span className="text-gray-400 text-sm tracking-widest ml-1 hidden sm:inline">APOD</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <label className="text-gray-500 text-xs tracking-wider hidden sm:block">날짜 선택</label>
+              <input
+                type="date"
+                value={selectedDate}
+                max={getToday()}
+                min="1995-06-16"
+                onChange={(e) => onDateChange(e.target.value)}
+                className="bg-gray-900 border border-gray-700 text-gray-300 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500 transition-colors"
+              />
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // ========================================
+    // Hero Section Component
+    // ========================================
+    function HeroSection({ apod, loading, translatedExplanation, translating }) {
+      const [showKo, setShowKo] = useState(true);
+
+      if (loading) {
+        return (
+          <div className="relative w-full h-[70vh] sm:h-[80vh] bg-gray-900 animate-pulse flex items-center justify-center">
+            <div className="text-amber-400 text-4xl animate-pulse-star">&#10022;</div>
+          </div>
+        );
+      }
+
+      if (!apod) return null;
+
+      const isVideo = apod.media_type === 'video';
+      const displayText = showKo
+        ? (translating ? null : (translatedExplanation || apod.explanation))
+        : apod.explanation;
+
+      return (
+        <section className="pt-16">
+          {/* Hero Image / Video */}
+          <div className="relative w-full h-[70vh] sm:h-[80vh] overflow-hidden">
+            {isVideo ? (
+              <iframe src={apod.url} title={apod.title} className="w-full h-full" frameBorder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
+            ) : (
+              <img src={apod.hdurl || apod.url} alt={apod.title} className="w-full h-full object-cover" loading="eager" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/30 to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 p-6 sm:p-10 lg:p-16">
+              <p className="text-amber-400 text-[10px] sm:text-xs tracking-[0.25em] uppercase mb-2 sm:mb-3 font-medium">
+                Astronomy Picture of the Day
+              </p>
+              <p className="text-gray-400 text-xs sm:text-sm mb-2 sm:mb-3">{formatDisplayDate(apod.date)}</p>
+              <h1 className="serif text-white text-3xl sm:text-5xl lg:text-6xl font-black leading-tight max-w-4xl mb-3">
+                {apod.title}
+              </h1>
+              {apod.copyright && (
+                <p className="text-gray-500 text-xs sm:text-sm italic">&copy; {apod.copyright.trim()}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Explanation card */}
+          <div className="max-w-3xl mx-auto px-6 sm:px-8 py-10 sm:py-14">
+            {/* 언어 토글 */}
+            <div className="flex items-center justify-between mb-6">
+              <p className="text-gray-600 text-xs tracking-widest uppercase">Description</p>
+              <div className="flex rounded-lg overflow-hidden border border-gray-800 text-xs">
+                <button
+                  onClick={() => setShowKo(true)}
+                  className={`px-3 py-1.5 transition-colors ${showKo ? 'bg-amber-500 text-black font-semibold' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  한국어
+                </button>
+                <button
+                  onClick={() => setShowKo(false)}
+                  className={`px-3 py-1.5 transition-colors ${!showKo ? 'bg-amber-500 text-black font-semibold' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  English
+                </button>
+              </div>
+            </div>
+
+            {/* 번역 중 스켈레톤 */}
+            {showKo && translating ? (
+              <div className="space-y-3">
+                {[100, 90, 95, 80, 85].map((w, i) => (
+                  <div key={i} className={`h-4 bg-gray-800 rounded animate-pulse`} style={{ width: `${w}%` }} />
+                ))}
+                <p className="text-amber-500/60 text-xs mt-4 tracking-wider">번역 중...</p>
+              </div>
+            ) : (
+              <p className="text-gray-300 text-base sm:text-lg leading-relaxed sm:leading-loose">
+                {displayText}
+              </p>
+            )}
+
+            {!isVideo && apod.hdurl && (
+              <a href={apod.hdurl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 mt-8 px-6 py-3 border border-amber-500/40 text-amber-400 rounded-lg hover:bg-amber-500/10 transition-colors text-sm tracking-wide">
+                <span>HD로 보기</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" />
+                </svg>
+              </a>
+            )}
+          </div>
+        </section>
+      );
+    }
+
+    // ========================================
+    // Archive Strip Component
+    // ========================================
+    function ArchiveStrip({ items, selectedDate, onSelect, loading }) {
+      const scrollRef = useRef(null);
+
+      if (loading) {
+        return (
+          <section className="px-6 sm:px-8 lg:px-16 pb-16">
+            <div className="max-w-7xl mx-auto">
+              <div className="mb-8">
+                <h2 className="serif text-white text-2xl sm:text-3xl font-bold">Recent Archive</h2>
+                <div className="w-16 h-0.5 bg-amber-500 mt-3" />
+              </div>
+              <div className="flex gap-4 overflow-hidden">
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <div key={i} className="min-w-[160px] sm:min-w-[180px] h-[220px] bg-gray-900 rounded-xl animate-pulse flex-shrink-0" />
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      }
+
+      if (!items || items.length === 0) return null;
+
+      return (
+        <section className="px-6 sm:px-8 lg:px-16 pb-20">
+          <div className="max-w-7xl mx-auto">
+            <div className="mb-8">
+              <h2 className="serif text-white text-2xl sm:text-3xl font-bold">Recent Archive</h2>
+              <p className="text-gray-500 text-sm mt-1">지난 7일간의 우주 사진</p>
+              <div className="w-16 h-0.5 bg-amber-500 mt-3" />
+            </div>
+
+            <div
+              ref={scrollRef}
+              className="flex gap-4 overflow-x-auto hide-scrollbar pb-4"
+            >
+              {items.map((item) => {
+                const isSelected = item.date === selectedDate;
+                const isVideo = item.media_type === 'video';
+
+                return (
+                  <button
+                    key={item.date}
+                    onClick={() => onSelect(item)}
+                    className={`min-w-[160px] sm:min-w-[200px] flex-shrink-0 rounded-xl overflow-hidden border-2 transition-all duration-200 text-left group
+                      ${isSelected
+                        ? 'border-amber-500 shadow-lg shadow-amber-500/20'
+                        : 'border-transparent hover:border-gray-700'
+                      }`}
+                  >
+                    <div className="relative h-[130px] sm:h-[150px] bg-gray-900 overflow-hidden">
+                      {isVideo ? (
+                        <div className="w-full h-full bg-gray-800 flex items-center justify-center">
+                          <span className="text-4xl opacity-60 group-hover:opacity-100 transition-opacity">&#127916;</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={item.url}
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                      )}
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 w-2 h-2 bg-amber-400 rounded-full" />
+                      )}
+                    </div>
+                    <div className="p-3 bg-gray-900/80">
+                      <p className="text-gray-500 text-[10px] tracking-wider mb-1">{item.date}</p>
+                      <p className="text-gray-300 text-xs font-medium leading-snug line-clamp-2">
+                        {item.title}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    // ========================================
+    // Footer Component
+    // ========================================
+    function Footer() {
+      return (
+        <footer className="border-t border-white/5 py-8 px-6 text-center">
+          <p className="text-gray-600 text-xs tracking-wider">
+            Powered by <a href="https://api.nasa.gov" target="_blank" rel="noopener noreferrer" className="text-amber-500/60 hover:text-amber-400 transition-colors">NASA Open API</a>
+          </p>
+          <p className="text-gray-700 text-[10px] mt-2">
+            Astronomy Picture of the Day &mdash; Since 1995
+          </p>
+        </footer>
+      );
+    }
+
+    // ========================================
+    // App Component
+    // ========================================
+    function App() {
+      const [heroApod, setHeroApod] = useState(null);
+      const [archiveItems, setArchiveItems] = useState([]);
+      const [selectedDate, setSelectedDate] = useState(getToday());
+      const [heroLoading, setHeroLoading] = useState(true);
+      const [archiveLoading, setArchiveLoading] = useState(true);
+      const [error, setError] = useState(null);
+      const [translatedExplanation, setTranslatedExplanation] = useState(null);
+      const [translating, setTranslating] = useState(false);
+
+      const fetchApod = useCallback(async (date) => {
+        const url = `${API_BASE}?api_key=${API_KEY}&date=${date}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+        return res.json();
+      }, []);
+
+      const fetchArchive = useCallback(async () => {
+        const endDate = getToday();
+        const startDate = getDateNDaysAgo(6);
+        const url = `${API_BASE}?api_key=${API_KEY}&start_date=${startDate}&end_date=${endDate}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`API 오류: ${res.status}`);
+        return res.json();
+      }, []);
+
+      // explanation 변경 시 자동 번역
+      useEffect(() => {
+        if (!heroApod?.explanation) return;
+        setTranslatedExplanation(null);
+        setTranslating(true);
+        translateText(heroApod.explanation)
+          .then(setTranslatedExplanation)
+          .finally(() => setTranslating(false));
+      }, [heroApod?.explanation]);
+
+      const loadInitial = useCallback(async () => {
+        setHeroLoading(true);
+        setArchiveLoading(true);
+        setError(null);
+
+        try {
+          const [todayData, archiveData] = await Promise.all([
+            fetchApod(getToday()),
+            fetchArchive()
+          ]);
+          setHeroApod(todayData);
+          setSelectedDate(todayData.date);
+          setArchiveItems(archiveData.reverse());
+          setHeroLoading(false);
+          setArchiveLoading(false);
+        } catch (err) {
+          setError(err.message);
+          setHeroLoading(false);
+          setArchiveLoading(false);
+        }
+      }, [fetchApod, fetchArchive]);
+
+      useEffect(() => {
+        loadInitial();
+      }, [loadInitial]);
+
+      const handleDateChange = useCallback(async (date) => {
+        if (!date) return;
+        setSelectedDate(date);
+        setHeroLoading(true);
+        try {
+          const data = await fetchApod(date);
+          setHeroApod(data);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setHeroLoading(false);
+        }
+      }, [fetchApod]);
+
+      const handleArchiveSelect = useCallback((item) => {
+        setSelectedDate(item.date);
+        setHeroApod(item);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, []);
+
+      if (error && !heroApod) {
+        return <ErrorCard message={error} onRetry={loadInitial} />;
+      }
+
+      if (heroLoading && !heroApod) {
+        return <LoadingScreen />;
+      }
+
+      return (
+        <div className="min-h-screen bg-[#0a0a0a] text-white">
+          <Header selectedDate={selectedDate} onDateChange={handleDateChange} />
+          <HeroSection apod={heroApod} loading={heroLoading}
+            translatedExplanation={translatedExplanation} translating={translating} />
+          <div className="border-t border-white/5" />
+          <ArchiveStrip
+            items={archiveItems}
+            selectedDate={selectedDate}
+            onSelect={handleArchiveSelect}
+            loading={archiveLoading}
+          />
+          <Footer />
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
