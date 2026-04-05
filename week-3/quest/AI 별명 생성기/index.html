@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 별명 생성기</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    @keyframes pop-in {
+      0% { opacity: 0; transform: scale(0.8) translateY(10px); }
+      70% { transform: scale(1.05) translateY(-2px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .pop-in { animation: pop-in 0.35s ease-out forwards; }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .shimmer-bg {
+      background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    .float { animation: float 3s ease-in-out infinite; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-violet-50 via-purple-50 to-pink-50 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useCallback, useRef } = React;
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+
+    function ChipButton({ label, emoji, selected, onClick, color = 'violet' }) {
+      const colors = {
+        violet: selected
+          ? 'bg-violet-600 text-white border-violet-600 shadow-md shadow-violet-200'
+          : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300 hover:text-violet-600',
+        pink: selected
+          ? 'bg-pink-500 text-white border-pink-500 shadow-md shadow-pink-200'
+          : 'bg-white text-slate-600 border-slate-200 hover:border-pink-300 hover:text-pink-600',
+        amber: selected
+          ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-200'
+          : 'bg-white text-slate-600 border-slate-200 hover:border-amber-300 hover:text-amber-600',
+      };
+      return (
+        <button
+          onClick={onClick}
+          className={`px-4 py-2 rounded-full border-2 text-sm font-semibold transition-all ${colors[color]}`}
+        >
+          {emoji && <span className="mr-1.5">{emoji}</span>}
+          {label}
+        </button>
+      );
+    }
+
+    function NicknameCard({ nickname, index, onCopy, copied }) {
+      const colors = [
+        'from-violet-500 to-purple-600',
+        'from-pink-500 to-rose-500',
+        'from-amber-400 to-orange-500',
+        'from-emerald-400 to-teal-500',
+        'from-sky-400 to-blue-500',
+        'from-fuchsia-500 to-violet-500',
+        'from-rose-400 to-pink-500',
+        'from-cyan-400 to-sky-500',
+        'from-lime-400 to-emerald-500',
+        'from-orange-400 to-amber-500',
+      ];
+      const gradient = colors[index % colors.length];
+
+      return (
+        <div
+          className="pop-in group relative bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex items-center justify-between gap-3 hover:shadow-md transition-shadow cursor-default"
+          style={{ animationDelay: `${index * 60}ms`, opacity: 0 }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-9 h-9 rounded-full bg-gradient-to-br ${gradient} flex items-center justify-center text-white text-sm font-bold flex-shrink-0`}>
+              {index + 1}
+            </div>
+            <span className="text-slate-800 font-semibold text-lg truncate">{nickname}</span>
+          </div>
+          <button
+            onClick={() => onCopy(nickname)}
+            className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-slate-200 text-slate-500 hover:bg-violet-50 hover:text-violet-600 hover:border-violet-300"
+          >
+            {copied === nickname ? '✓ 복사됨' : '복사'}
+          </button>
+        </div>
+      );
+    }
+
+    function SkeletonCard() {
+      return (
+        <div className="bg-white rounded-2xl border border-slate-100 p-4 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full shimmer-bg flex-shrink-0" />
+          <div className="flex-1 h-6 rounded-lg shimmer-bg" />
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 App Component
+    // ========================================
+
+    const TONES = [
+      { id: '귀여운', label: '귀여운', emoji: '🐣' },
+      { id: '멋진', label: '멋진', emoji: '😎' },
+      { id: '재미있는', label: '재미있는', emoji: '🤣' },
+      { id: '유머러스한', label: '유머러스한', emoji: '😂' },
+      { id: '신비로운', label: '신비로운', emoji: '🔮' },
+      { id: '강렬한', label: '강렬한', emoji: '🔥' },
+      { id: '따뜻한', label: '따뜻한', emoji: '🌸' },
+    ];
+
+    const STYLES = [
+      { id: '한글 별명', label: '한글 별명', emoji: '🇰🇷' },
+      { id: '영어 별명', label: '영어 별명', emoji: '🔤' },
+      { id: '게임 닉네임', label: '게임 닉네임', emoji: '🎮' },
+      { id: 'SNS 아이디', label: 'SNS 아이디', emoji: '📱' },
+      { id: '이모지 포함', label: '이모지 포함', emoji: '✨' },
+      { id: '동물 캐릭터', label: '동물 캐릭터', emoji: '🦊' },
+    ];
+
+    const COUNTS = [5, 10, 15];
+
+    function App() {
+      const [keywords, setKeywords] = useState('');
+      const [tone, setTone] = useState('귀여운');
+      const [styles, setStyles] = useState(['한글 별명']);
+      const [count, setCount] = useState(10);
+      const [loading, setLoading] = useState(false);
+      const [nicknames, setNicknames] = useState([]);
+      const [error, setError] = useState('');
+      const [copied, setCopied] = useState('');
+      const inputRef = useRef(null);
+
+      const handleGenerate = useCallback(async () => {
+        if (!keywords.trim()) {
+          setError('이름이나 특징을 입력해 주세요.');
+          inputRef.current?.focus();
+          return;
+        }
+        setError('');
+        setNicknames([]);
+        setLoading(true);
+
+        try {
+          const res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keywords: keywords.trim(), tone, style: styles.join(', '), count }),
+          });
+          const data = await res.json();
+          if (data.error) {
+            setError(data.error);
+          } else {
+            setNicknames(data.nicknames);
+          }
+        } catch {
+          setError('서버와 연결할 수 없어요. 서버가 실행 중인지 확인해 주세요.');
+        } finally {
+          setLoading(false);
+        }
+      }, [keywords, tone, styles, count]);
+
+      const handleCopy = (nickname) => {
+        navigator.clipboard.writeText(nickname).then(() => {
+          setCopied(nickname);
+          setTimeout(() => setCopied(''), 2000);
+        });
+      };
+
+      const handleCopyAll = () => {
+        navigator.clipboard.writeText(nicknames.join('\n')).then(() => {
+          setCopied('__all__');
+          setTimeout(() => setCopied(''), 2000);
+        });
+      };
+
+      return (
+        <div className="min-h-screen py-10 px-4">
+          <div className="max-w-xl mx-auto">
+
+            {/* Header */}
+            <div className="text-center mb-10">
+              <div className="text-6xl mb-3 float">🏷️</div>
+              <h1 className="text-3xl font-black text-slate-800 mb-2">AI 별명 생성기</h1>
+              <p className="text-slate-500 text-sm">이름이나 특징을 입력하면 AI가 별명을 만들어 드려요</p>
+            </div>
+
+            {/* Input Card */}
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 mb-4">
+
+              {/* Keywords Input */}
+              <div className="mb-5">
+                <label className="block text-sm font-bold text-slate-700 mb-2">이름 / 특징</label>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={keywords}
+                  onChange={e => setKeywords(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleGenerate()}
+                  placeholder="예: 민준, 고양이를 좋아하는 개발자, 축구선수"
+                  className="w-full px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-700 placeholder-slate-300 focus:outline-none focus:border-violet-400 text-sm transition-colors"
+                />
+              </div>
+
+              {/* Tone */}
+              <div className="mb-5">
+                <label className="block text-sm font-bold text-slate-700 mb-2">톤 / 분위기</label>
+                <div className="flex flex-wrap gap-2">
+                  {TONES.map(t => (
+                    <ChipButton
+                      key={t.id}
+                      label={t.label}
+                      emoji={t.emoji}
+                      selected={tone === t.id}
+                      onClick={() => setTone(t.id)}
+                      color="violet"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Style */}
+              <div className="mb-5">
+                <label className="block text-sm font-bold text-slate-700 mb-2">
+                  스타일
+                  <span className="ml-2 text-xs font-normal text-slate-400">중복 선택 가능</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {STYLES.map(s => (
+                    <ChipButton
+                      key={s.id}
+                      label={s.label}
+                      emoji={s.emoji}
+                      selected={styles.includes(s.id)}
+                      onClick={() => setStyles(prev =>
+                        prev.includes(s.id)
+                          ? prev.length === 1 ? prev : prev.filter(x => x !== s.id)
+                          : [...prev, s.id]
+                      )}
+                      color="pink"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Count */}
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-slate-700 mb-2">생성 개수</label>
+                <div className="flex gap-2">
+                  {COUNTS.map(c => (
+                    <ChipButton
+                      key={c}
+                      label={`${c}개`}
+                      selected={count === c}
+                      onClick={() => setCount(c)}
+                      color="amber"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+                  {error}
+                </div>
+              )}
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-pink-500 hover:from-violet-500 hover:to-pink-400 text-white font-bold text-base transition-all shadow-lg shadow-violet-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+                    </svg>
+                    생성 중...
+                  </span>
+                ) : '✨ 별명 생성하기'}
+              </button>
+            </div>
+
+            {/* Results */}
+            {(loading || nicknames.length > 0) && (
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-bold text-slate-700">
+                    {loading ? '별명 생성 중...' : `생성된 별명 ${nicknames.length}개`}
+                  </h2>
+                  {!loading && nicknames.length > 0 && (
+                    <button
+                      onClick={handleCopyAll}
+                      className="text-xs font-semibold text-violet-600 hover:text-violet-800 transition-colors"
+                    >
+                      {copied === '__all__' ? '✓ 모두 복사됨' : '전체 복사'}
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  {loading
+                    ? Array.from({ length: count }).map((_, i) => <SkeletonCard key={i} />)
+                    : nicknames.map((n, i) => (
+                        <NicknameCard
+                          key={`${n}-${i}`}
+                          nickname={n}
+                          index={i}
+                          onCopy={handleCopy}
+                          copied={copied}
+                        />
+                      ))
+                  }
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

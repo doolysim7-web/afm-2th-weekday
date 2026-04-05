@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Midjourney</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; background: #0f0f13; }
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .shimmer {
+      background: linear-gradient(90deg, #1e1e2e 25%, #2a2a3e 50%, #1e1e2e 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+    }
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .fade-in { animation: fade-in 0.5s ease-out; }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .spin-slow { animation: spin-slow 3s linear infinite; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-thumb { background: #3f3f5a; border-radius: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+  </style>
+</head>
+<body class="min-h-screen text-white">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useCallback } = React;
+
+    // ========================================
+    // 🎨 Design System Components
+    // ========================================
+
+    const STYLES = [
+      {
+        id: 'watercolor',
+        name: '수채화',
+        emoji: '🎨',
+        desc: '부드럽고 투명한 물감',
+        prompt: 'watercolor painting style, soft watercolor brushstrokes, delicate transparent colors, wet-on-wet technique',
+        gradient: 'from-blue-400 to-cyan-300',
+        bg: 'bg-blue-950',
+      },
+      {
+        id: 'oilpaint',
+        name: '유화',
+        emoji: '🖼️',
+        desc: '풍부한 질감의 고전 화풍',
+        prompt: 'oil painting style, rich impasto texture, classical fine art, old masters technique, painterly brushwork',
+        gradient: 'from-amber-500 to-orange-400',
+        bg: 'bg-amber-950',
+      },
+      {
+        id: 'anime',
+        name: '애니메이션',
+        emoji: '✨',
+        desc: '일본 애니 스타일',
+        prompt: 'anime style, Japanese animation, vibrant colors, clean linework, Studio Ghibli inspired, cel shading',
+        gradient: 'from-pink-400 to-purple-400',
+        bg: 'bg-pink-950',
+      },
+      {
+        id: 'cyberpunk',
+        name: '사이버펑크',
+        emoji: '🌆',
+        desc: '네온과 미래 도시',
+        prompt: 'cyberpunk style, neon lights, futuristic dystopia, rain-soaked streets, holographic displays, dark atmosphere',
+        gradient: 'from-violet-500 to-pink-500',
+        bg: 'bg-violet-950',
+      },
+      {
+        id: 'realistic',
+        name: '사진 실사',
+        emoji: '📷',
+        desc: '초고해상도 사실적 표현',
+        prompt: 'photorealistic, hyperrealistic photography, 8K resolution, sharp focus, professional lighting, DSLR quality',
+        gradient: 'from-slate-400 to-slate-300',
+        bg: 'bg-slate-900',
+      },
+      {
+        id: 'sketch',
+        name: '연필 스케치',
+        emoji: '✏️',
+        desc: '섬세한 손 그림 느낌',
+        prompt: 'pencil sketch, hand drawn illustration, graphite drawing, detailed cross-hatching, black and white',
+        gradient: 'from-gray-400 to-gray-200',
+        bg: 'bg-gray-900',
+      },
+      {
+        id: 'inkwash',
+        name: '수묵화',
+        emoji: '🖌️',
+        desc: '동양적 먹 번짐',
+        prompt: 'Korean ink wash painting, sumi-e style, minimal composition, black ink on white, zen aesthetic, traditional Asian art',
+        gradient: 'from-stone-400 to-stone-200',
+        bg: 'bg-stone-900',
+      },
+      {
+        id: 'popart',
+        name: '팝 아트',
+        emoji: '🎭',
+        desc: '강렬한 색상과 패턴',
+        prompt: 'pop art style, Andy Warhol inspired, bold flat colors, halftone dots, comic book aesthetic, high contrast',
+        gradient: 'from-yellow-400 to-red-400',
+        bg: 'bg-yellow-950',
+      },
+      {
+        id: 'fantasy',
+        name: '판타지',
+        emoji: '🧙',
+        desc: '마법과 신비로운 세계',
+        prompt: 'epic fantasy art, magical atmosphere, dramatic lighting, ethereal glow, mystical environment, digital painting',
+        gradient: 'from-emerald-400 to-teal-400',
+        bg: 'bg-emerald-950',
+      },
+      {
+        id: 'vintage',
+        name: '빈티지',
+        emoji: '📻',
+        desc: '레트로 감성 필름 느낌',
+        prompt: 'vintage retro style, film photography, grain texture, faded colors, 1970s aesthetic, nostalgic mood',
+        gradient: 'from-orange-300 to-yellow-200',
+        bg: 'bg-orange-950',
+      },
+      {
+        id: 'minimal',
+        name: '미니멀',
+        emoji: '⬜',
+        desc: '깔끔하고 단순한 구성',
+        prompt: 'minimalist design, clean lines, simple composition, flat design, limited color palette, negative space',
+        gradient: 'from-white to-slate-200',
+        bg: 'bg-slate-950',
+      },
+      {
+        id: 'ghibli',
+        name: '지브리풍',
+        emoji: '🌿',
+        desc: '따뜻한 지브리 감성',
+        prompt: 'Studio Ghibli style, Hayao Miyazaki inspired, soft warm colors, whimsical nature, hand-drawn animation feel, dreamy pastoral landscape, gentle light',
+        gradient: 'from-green-400 to-emerald-300',
+        bg: 'bg-green-950',
+      },
+      {
+        id: 'custom',
+        name: '직접 입력',
+        emoji: '⚙️',
+        desc: '나만의 스타일 정의',
+        prompt: '',
+        gradient: 'from-indigo-400 to-purple-400',
+        bg: 'bg-indigo-950',
+      },
+    ];
+
+    const SIZES = [
+      { id: 'landscape_4_3', label: '가로형', ratio: '4:3', icon: '▬' },
+      { id: 'square_hd', label: '정방형', ratio: '1:1', icon: '■' },
+      { id: 'portrait_4_3', label: '세로형', ratio: '3:4', icon: '▮' },
+    ];
+
+    const MOTIONS = [
+      { id: 'blur',     label: '모션 블러',   emoji: '💨', prompt: 'motion blur, speed lines, fast movement effect' },
+      { id: 'dynamic',  label: '역동적인',    emoji: '⚡', prompt: 'dynamic action pose, explosive energy, dramatic movement' },
+      { id: 'wind',     label: '바람 효과',   emoji: '🌬️', prompt: 'wind blowing effect, flowing hair and clothes, gentle breeze' },
+      { id: 'wave',     label: '물결 효과',   emoji: '🌊', prompt: 'flowing water waves, ripple effect, fluid motion' },
+      { id: 'fire',     label: '불꽃 효과',   emoji: '🔥', prompt: 'fire sparks and flames, burning embers, explosive energy' },
+      { id: 'slow',     label: '슬로우 모션', emoji: '🎞️', prompt: 'slow motion frozen moment, suspended in time, high speed photography' },
+      { id: 'swirl',    label: '소용돌이',    emoji: '🌀', prompt: 'swirling vortex, spinning motion, circular movement' },
+      { id: 'light',    label: '빛줄기',      emoji: '✨', prompt: 'light trails, long exposure photography, glowing light streaks' },
+      { id: 'falling',  label: '낙하감',      emoji: '🍂', prompt: 'falling motion, gravity effect, objects descending gracefully' },
+      { id: 'shatter',  label: '파편 효과',   emoji: '💥', prompt: 'shattering explosion, fragments flying, dramatic impact' },
+    ];
+
+    function StyleCard({ style, selected, onClick }) {
+      return (
+        <button
+          onClick={() => onClick(style)}
+          className={`relative p-3 rounded-2xl border-2 transition-all text-left w-full ${
+            selected
+              ? 'border-white bg-white/10 scale-105 shadow-lg shadow-white/10'
+              : 'border-white/10 bg-white/5 hover:border-white/30 hover:bg-white/10'
+          }`}
+        >
+          <div className={`text-2xl mb-1.5`}>{style.emoji}</div>
+          <div className="font-bold text-sm text-white">{style.name}</div>
+          <div className="text-xs text-white/50 mt-0.5">{style.desc}</div>
+          {selected && (
+            <div className="absolute top-2 right-2 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+              <svg className="w-2.5 h-2.5 text-black" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </div>
+          )}
+        </button>
+      );
+    }
+
+    function LoadingCanvas() {
+      return (
+        <div className="w-full aspect-[4/3] rounded-2xl shimmer flex flex-col items-center justify-center gap-4">
+          <div className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full spin-slow" />
+          <p className="text-white/60 text-sm">이미지 생성 중...</p>
+          <p className="text-white/30 text-xs">보통 5~15초 정도 걸려요</p>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🚀 App Component
+    // ========================================
+
+    function App() {
+      const [selectedStyle, setSelectedStyle] = useState(STYLES[0]);
+      const [customStylePrompt, setCustomStylePrompt] = useState('');
+      const [selectedMotions, setSelectedMotions] = useState([]);
+      const [prompt, setPrompt] = useState('');
+      const [selectedSize, setSelectedSize] = useState(SIZES[0]);
+      const [loading, setLoading] = useState(false);
+      const [result, setResult] = useState(null);
+      const [error, setError] = useState('');
+      const [history, setHistory] = useState([]);
+      const textareaRef = useRef(null);
+
+      const handleGenerate = useCallback(async () => {
+        if (!prompt.trim()) {
+          setError('생성할 이미지를 설명해 주세요.');
+          textareaRef.current?.focus();
+          return;
+        }
+        setError('');
+        setLoading(true);
+        setResult(null);
+
+        const stylePrompt = [
+          selectedStyle.id === 'custom' ? customStylePrompt : selectedStyle.prompt,
+          ...selectedMotions.map(id => MOTIONS.find(m => m.id === id)?.prompt || ''),
+        ].filter(Boolean).join(', ');
+
+        try {
+          const res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: prompt.trim(),
+              stylePrompt,
+              imageSize: selectedSize.id,
+            }),
+          });
+          const data = await res.json();
+          if (data.error) {
+            setError(data.error);
+          } else {
+            setResult(data);
+            setHistory(prev => [
+              { url: data.url, prompt: prompt.trim(), style: selectedStyle.name, seed: data.seed, id: Date.now() },
+              ...prev.slice(0, 11),
+            ]);
+          }
+        } catch {
+          setError('서버와 연결할 수 없어요. 서버가 실행 중인지 확인해 주세요.');
+        } finally {
+          setLoading(false);
+        }
+      }, [prompt, selectedStyle, customStylePrompt, selectedSize]);
+
+      const handleDownload = async () => {
+        if (!result?.url) return;
+        const a = document.createElement('a');
+        a.href = result.url;
+        a.download = `midjourney-${Date.now()}.png`;
+        a.target = '_blank';
+        a.click();
+      };
+
+      return (
+        <div className="min-h-screen bg-[#0f0f13] flex flex-col">
+          {/* Header */}
+          <header className="border-b border-white/10 px-6 py-4 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-pink-500 flex items-center justify-center text-lg">
+              🎨
+            </div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent">
+              My Midjourney
+            </h1>
+            <span className="text-white/30 text-xs ml-auto">powered by fal.ai FLUX</span>
+          </header>
+
+          <div className="flex-1 flex flex-col lg:flex-row gap-0 overflow-hidden">
+            {/* Left Panel - Controls */}
+            <div className="lg:w-[420px] flex-shrink-0 border-r border-white/10 overflow-y-auto p-5 flex flex-col gap-5">
+
+              {/* Style Selection */}
+              <section>
+                <h2 className="text-sm font-semibold text-white/60 mb-3 uppercase tracking-wider">화풍 / 스타일</h2>
+                <div className="grid grid-cols-3 gap-2">
+                  {STYLES.map(s => (
+                    <StyleCard
+                      key={s.id}
+                      style={s}
+                      selected={selectedStyle.id === s.id}
+                      onClick={setSelectedStyle}
+                    />
+                  ))}
+                </div>
+                {selectedStyle.id === 'custom' && (
+                  <textarea
+                    value={customStylePrompt}
+                    onChange={e => setCustomStylePrompt(e.target.value)}
+                    placeholder="예: impressionist painting, moody lighting, textured brushwork"
+                    rows={2}
+                    className="mt-2 w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500 resize-none"
+                  />
+                )}
+                {selectedStyle.id !== 'custom' && (
+                  <div className="mt-2 px-3 py-2 bg-white/5 rounded-xl border border-white/10">
+                    <p className="text-xs text-white/40 leading-relaxed line-clamp-2">{selectedStyle.prompt}</p>
+                  </div>
+                )}
+              </section>
+
+              {/* Aspect Ratio */}
+              <section>
+                <h2 className="text-sm font-semibold text-white/60 mb-3 uppercase tracking-wider">비율</h2>
+                <div className="flex gap-2">
+                  {SIZES.map(size => (
+                    <button
+                      key={size.id}
+                      onClick={() => setSelectedSize(size)}
+                      className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+                        selectedSize.id === size.id
+                          ? 'border-violet-500 bg-violet-500/20 text-violet-300'
+                          : 'border-white/10 bg-white/5 text-white/50 hover:border-white/30'
+                      }`}
+                    >
+                      <span className="block text-lg mb-0.5">{size.icon}</span>
+                      <span className="text-xs">{size.label}</span>
+                      <span className="block text-xs opacity-50">{size.ratio}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {/* Motion */}
+              <section>
+                <h2 className="text-sm font-semibold text-white/60 mb-3 uppercase tracking-wider">
+                  모션 효과
+                  <span className="ml-2 text-white/30 normal-case text-xs font-normal">중복 선택 가능</span>
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {MOTIONS.map(m => {
+                    const active = selectedMotions.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => setSelectedMotions(prev =>
+                          active ? prev.filter(x => x !== m.id) : [...prev, m.id]
+                        )}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                          active
+                            ? 'bg-pink-500/30 border-pink-400 text-pink-300'
+                            : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30 hover:text-white/80'
+                        }`}
+                      >
+                        {m.emoji} {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedMotions.length > 0 && (
+                  <button
+                    onClick={() => setSelectedMotions([])}
+                    className="mt-2 text-xs text-white/30 hover:text-white/60 transition-colors"
+                  >
+                    ✕ 모션 초기화
+                  </button>
+                )}
+              </section>
+
+              {/* Prompt */}
+              <section>
+                <h2 className="text-sm font-semibold text-white/60 mb-3 uppercase tracking-wider">이미지 설명</h2>
+                <textarea
+                  ref={textareaRef}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  placeholder="예: 벚꽃이 흐드러진 한강 다리 위에 서 있는 고양이"
+                  rows={4}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-violet-500 resize-none transition-colors"
+                  onKeyDown={e => { if (e.key === 'Enter' && e.metaKey) handleGenerate(); }}
+                />
+                <p className="text-xs text-white/30 mt-1.5">한국어로 입력해도 돼요 • ⌘+Enter로 생성</p>
+              </section>
+
+              {/* Error */}
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-red-400 text-sm">
+                  {error}
+                </div>
+              )}
+
+              {/* Generate Button */}
+              <button
+                onClick={handleGenerate}
+                disabled={loading}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-white text-base transition-all shadow-lg shadow-violet-900/50 hover:shadow-violet-800/50"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full inline-block spin-slow" />
+                    생성 중...
+                  </span>
+                ) : '✨ 이미지 생성'}
+              </button>
+            </div>
+
+            {/* Right Panel - Result */}
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
+              {/* Main Result */}
+              <section>
+                <h2 className="text-sm font-semibold text-white/60 mb-3 uppercase tracking-wider">결과</h2>
+                {loading ? (
+                  <LoadingCanvas />
+                ) : result ? (
+                  <div className="fade-in">
+                    <div className="relative group rounded-2xl overflow-hidden">
+                      <img
+                        src={result.url}
+                        alt="generated"
+                        className="w-full rounded-2xl shadow-2xl"
+                      />
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                        <button
+                          onClick={handleDownload}
+                          className="px-4 py-2 bg-white text-black rounded-xl text-sm font-bold hover:bg-white/90 transition-colors"
+                        >
+                          ⬇ 다운로드
+                        </button>
+                        <button
+                          onClick={handleGenerate}
+                          className="px-4 py-2 bg-violet-600 text-white rounded-xl text-sm font-bold hover:bg-violet-500 transition-colors"
+                        >
+                          🔄 재생성
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-white/70">{prompt}</p>
+                        <p className="text-xs text-white/30 mt-0.5">{selectedStyle.name} • {selectedSize.label}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={handleDownload}
+                          className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs text-white/70 transition-colors"
+                        >
+                          ⬇ 저장
+                        </button>
+                        <button
+                          onClick={handleGenerate}
+                          className="px-3 py-1.5 bg-violet-600/40 hover:bg-violet-600/60 rounded-lg text-xs text-violet-300 transition-colors"
+                        >
+                          🔄 재생성
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full aspect-[4/3] rounded-2xl border-2 border-dashed border-white/10 flex flex-col items-center justify-center gap-3 text-white/30">
+                    <div className="text-5xl">🎨</div>
+                    <p className="text-sm">스타일과 설명을 입력하고</p>
+                    <p className="text-sm">이미지를 생성해 보세요</p>
+                  </div>
+                )}
+              </section>
+
+              {/* History */}
+              {history.length > 0 && (
+                <section>
+                  <h2 className="text-sm font-semibold text-white/60 mb-3 uppercase tracking-wider">생성 기록</h2>
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    {history.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => setResult({ url: item.url, seed: item.seed })}
+                        className="group relative aspect-square rounded-xl overflow-hidden hover:ring-2 hover:ring-violet-500 transition-all"
+                      >
+                        <img src={item.url} alt={item.prompt} className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-1.5">
+                          <p className="text-white text-[10px] line-clamp-2 leading-tight">{item.prompt}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
