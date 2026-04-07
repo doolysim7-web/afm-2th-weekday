@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>할 일 목록</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    .line-through-anim {
+      transition: all 0.2s ease;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+
+    // ========================================
+    // App Component
+    // ========================================
+    function App() {
+      const [users, setUsers] = useState([]);
+      const [selectedUserId, setSelectedUserId] = useState(null);
+      const [todos, setTodos] = useState([]);
+      const [input, setInput] = useState("");
+      const [newUserInput, setNewUserInput] = useState("");
+      const inputRef = useRef(null);
+
+      // 유저 목록 로드
+      useEffect(() => {
+        fetch("/api/users")
+          .then((r) => r.json())
+          .then((res) => {
+            setUsers(res.data);
+            if (res.data.length > 0) setSelectedUserId(res.data[0].id);
+          });
+      }, []);
+
+      // 선택된 유저의 todo 로드
+      useEffect(() => {
+        if (selectedUserId === null) return;
+        fetch(`/api/users/${selectedUserId}/todos`)
+          .then((r) => r.json())
+          .then((res) => {
+            setTodos(res.data);
+            inputRef.current?.focus();
+          });
+      }, [selectedUserId]);
+
+      const remaining = todos.filter((t) => !t.done).length;
+      const selectedUser = users.find((u) => u.id === selectedUserId);
+
+      const addUser = async () => {
+        const name = newUserInput.trim();
+        if (!name) return;
+        const res = await fetch("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        }).then((r) => r.json());
+        if (res.success) {
+          setUsers((prev) => [...prev, res.data]);
+          setNewUserInput("");
+        }
+      };
+
+      const addTodo = async () => {
+        const text = input.trim();
+        if (!text || selectedUserId === null) return;
+        const res = await fetch(`/api/users/${selectedUserId}/todos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        }).then((r) => r.json());
+        if (res.success) {
+          setTodos((prev) => [...prev, res.data]);
+          setInput("");
+          inputRef.current?.focus();
+        }
+      };
+
+      const toggleTodo = async (id) => {
+        const todo = todos.find((t) => t.id === id);
+        const res = await fetch(`/api/todos/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ done: !todo.done }),
+        }).then((r) => r.json());
+        if (res.success) {
+          setTodos((prev) => prev.map((t) => (t.id === id ? res.data : t)));
+        }
+      };
+
+      const deleteTodo = async (id) => {
+        await fetch(`/api/todos/${id}`, { method: "DELETE" });
+        setTodos((prev) => prev.filter((t) => t.id !== id));
+      };
+
+      return (
+        <div className="max-w-lg mx-auto px-4 py-12">
+          <h1 className="text-3xl font-bold text-gray-800 text-center mb-8">
+            할 일 목록
+          </h1>
+
+          {/* 유저 선택 */}
+          <div className="mb-6">
+            <div className="flex gap-2 flex-wrap mb-2">
+              {users.map((u) => (
+                <button
+                  key={u.id}
+                  onClick={() => setSelectedUserId(u.id)}
+                  className={`px-4 py-2 rounded-full text-sm font-medium transition ${
+                    selectedUserId === u.id
+                      ? "bg-blue-500 text-white"
+                      : "bg-white border border-gray-300 text-gray-600 hover:border-blue-400"
+                  }`}
+                >
+                  {u.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newUserInput}
+                onChange={(e) => setNewUserInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addUser()}
+                placeholder="새 유저 이름"
+                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent bg-white"
+              />
+              <button
+                onClick={addUser}
+                disabled={!newUserInput.trim()}
+                className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                유저 추가
+              </button>
+            </div>
+          </div>
+
+          {/* Todo 입력 */}
+          <div className="flex gap-2 mb-6">
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTodo()}
+              placeholder={`${selectedUser?.name}의 할 일을 입력하세요`}
+              className="flex-1 px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent text-gray-700 bg-white shadow-sm"
+            />
+            <button
+              onClick={addTodo}
+              disabled={!input.trim()}
+              className="px-5 py-3 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 active:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm"
+            >
+              추가
+            </button>
+          </div>
+
+          {/* Todo 목록 */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {todos.length === 0 ? (
+              <div className="py-16 text-center text-gray-400">
+                할 일이 없습니다. 위에서 추가해 보세요!
+              </div>
+            ) : (
+              <ul>
+                {todos.map((todo, idx) => (
+                  <li
+                    key={todo.id}
+                    className={`flex items-center gap-3 px-5 py-4 group ${
+                      idx !== 0 ? "border-t border-gray-100" : ""
+                    } hover:bg-gray-50 transition`}
+                  >
+                    {/* Checkbox */}
+                    <button
+                      onClick={() => toggleTodo(todo.id)}
+                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition ${
+                        todo.done
+                          ? "bg-blue-500 border-blue-500"
+                          : "border-gray-300 hover:border-blue-400"
+                      }`}
+                      aria-label={todo.done ? "완료 취소" : "완료 처리"}
+                    >
+                      {todo.done && (
+                        <svg
+                          className="w-3.5 h-3.5 text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={3}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                      )}
+                    </button>
+
+                    {/* Text */}
+                    <span
+                      onClick={() => toggleTodo(todo.id)}
+                      className={`flex-1 cursor-pointer select-none line-through-anim ${
+                        todo.done
+                          ? "line-through text-gray-400"
+                          : "text-gray-700"
+                      }`}
+                    >
+                      {todo.text}
+                    </span>
+
+                    {/* Delete */}
+                    <button
+                      onClick={() => deleteTodo(todo.id)}
+                      className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition p-1"
+                      aria-label="삭제"
+                    >
+                      <svg
+                        className="w-5 h-5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Footer */}
+          {todos.length > 0 && (
+            <div className="mt-4 text-center text-sm text-gray-400">
+              남은 할 일: <span className="font-semibold text-gray-600">{remaining}</span>개
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

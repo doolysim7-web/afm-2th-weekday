@@ -1,0 +1,10 @@
+{
+  "id": 2,
+  "text": "환경 설정",
+  "done": false,
+  "items": [
+    { "text": "개발 환경 세팅", "done": false },
+    { "text": "패키지 설치", "done": false },
+    { "text": "설정 파일 작성", "done": false }
+  ]
+}

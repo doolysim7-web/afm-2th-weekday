@@ -1,0 +1,10 @@
+{
+  "id": 5,
+  "text": "배포",
+  "done": false,
+  "items": [
+    { "text": "빌드 확인", "done": false },
+    { "text": "배포 환경 준비", "done": false },
+    { "text": "릴리즈 완료", "done": false }
+  ]
+}
