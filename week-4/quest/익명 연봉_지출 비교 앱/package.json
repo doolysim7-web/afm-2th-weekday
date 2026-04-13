@@ -1,0 +1,14 @@
+{
+  "name": "anonymous-salary-expense-app",
+  "version": "1.0.0",
+  "description": "익명 연봉/지출 비교 앱",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.0"
+  }
+}

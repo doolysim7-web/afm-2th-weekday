@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>익명 연봉 & 지출 비교</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: {
+              50: '#eef2f7',
+              100: '#d4dce8',
+              200: '#a9b9d1',
+              300: '#7e96ba',
+              400: '#5373a3',
+              500: '#2d5186',
+              600: '#1e3a5f',
+              700: '#162c49',
+              800: '#0f1f33',
+              900: '#0a1628',
+              950: '#060d18',
+            },
+            gold: {
+              50: '#fffbeb',
+              100: '#fef3c7',
+              200: '#fde68a',
+              300: '#fcd34d',
+              400: '#fbbf24',
+              500: '#f59e0b',
+              600: '#d97706',
+              700: '#b45309',
+              800: '#92400e',
+              900: '#78350f',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;800;900&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+    .bar-animate { transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+    .fade-in { animation: fadeIn 0.5s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse-ring { 0% { transform: scale(0.9); opacity: 0.5; } 50% { transform: scale(1.05); opacity: 0.8; } 100% { transform: scale(0.9); opacity: 0.5; } }
+    .pulse-ring { animation: pulse-ring 2s ease-in-out infinite; }
+  </style>
+</head>
+<body class="bg-navy-950 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useEffect, useMemo, useCallback } = React;
+
+    // ========================================
+    // API Configuration
+    // ========================================
+    const API_BASE_URL = window.location.hostname === 'localhost'
+      ? `http://${window.location.hostname}:${window.location.port || 3000}/api`
+      : '/api';
+
+    async function apiFetch(endpoint, options = {}) {
+      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || '요청에 실패했습니다.');
+      }
+      return json.data;
+    }
+
+    // ========================================
+    // Constants
+    // ========================================
+    const JOB_CATEGORIES = ['개발', '디자인', '기획', '마케팅', '영업', '인사/총무', '재무/회계', '기타'];
+
+    const EXPENSE_FIELDS = [
+      { key: 'food', label: '식비', placeholder: '예: 40' },
+      { key: 'housing', label: '주거비', placeholder: '예: 60' },
+      { key: 'transport', label: '교통비', placeholder: '예: 10' },
+      { key: 'subscription', label: '구독료', placeholder: '예: 3' },
+      { key: 'etc_expense', label: '기타', placeholder: '예: 20' },
+    ];
+
+    const CATEGORY_COLORS = {
+      food: { bg: 'bg-blue-500', text: 'text-blue-400', label: '식비' },
+      housing: { bg: 'bg-emerald-500', text: 'text-emerald-400', label: '주거비' },
+      transport: { bg: 'bg-yellow-500', text: 'text-yellow-400', label: '교통비' },
+      subscription: { bg: 'bg-purple-500', text: 'text-purple-400', label: '구독료' },
+      etc_expense: { bg: 'bg-gray-400', text: 'text-gray-400', label: '기타' },
+    };
+
+    const SALARY_RANGES = [
+      { label: '~200만원', key: '~200' },
+      { label: '200~400만원', key: '200~400' },
+      { label: '400~600만원', key: '400~600' },
+      { label: '600~800만원', key: '600~800' },
+      { label: '800만원~', key: '800~' },
+    ];
+
+    // ========================================
+    // Design System Components
+    // ========================================
+    function Button({ variant = 'primary', size = 'md', disabled = false, onClick, className = '', children, type = 'button' }) {
+      const base = 'font-semibold rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-navy-900 disabled:opacity-50 disabled:cursor-not-allowed';
+      const variants = {
+        primary: 'bg-gold-500 hover:bg-gold-400 text-navy-900 focus:ring-gold-500',
+        secondary: 'bg-navy-700 hover:bg-navy-600 text-gray-200 border border-navy-500 focus:ring-navy-500',
+        danger: 'bg-red-600 hover:bg-red-500 text-white focus:ring-red-500',
+        ghost: 'bg-transparent hover:bg-navy-800 text-gray-300 focus:ring-navy-500',
+      };
+      const sizes = {
+        sm: 'px-3 py-1.5 text-sm',
+        md: 'px-5 py-2.5 text-base',
+        lg: 'px-7 py-3.5 text-lg',
+      };
+      return (
+        <button type={type} disabled={disabled} onClick={onClick}
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ label, type = 'text', value, onChange, placeholder, error, disabled, suffix, className = '' }) {
+      return (
+        <div className={`${className}`}>
+          {label && <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>}
+          <div className="relative">
+            <input type={type} value={value} onChange={onChange} placeholder={placeholder} disabled={disabled}
+              className={`w-full bg-navy-800 border ${error ? 'border-red-500' : 'border-navy-600'} rounded-lg px-4 py-2.5 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-colors disabled:opacity-50 ${suffix ? 'pr-16' : ''}`} />
+            {suffix && <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{suffix}</span>}
+          </div>
+          {error && <p className="mt-1 text-sm text-red-400">{error}</p>}
+        </div>
+      );
+    }
+
+    function Select({ label, value, onChange, options, placeholder, className = '' }) {
+      return (
+        <div className={className}>
+          {label && <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>}
+          <select value={value} onChange={onChange}
+            className="w-full bg-navy-800 border border-navy-600 rounded-lg px-4 py-2.5 text-gray-100 focus:outline-none focus:ring-2 focus:ring-gold-500 focus:border-transparent transition-colors appearance-none"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239ca3af' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}>
+            {placeholder && <option value="">{placeholder}</option>}
+            {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+          </select>
+        </div>
+      );
+    }
+
+    function Card({ children, className = '' }) {
+      return (
+        <div className={`bg-navy-900 border border-navy-700 rounded-xl p-5 md:p-6 ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function Modal({ isOpen, onClose, title, children, size = 'md' }) {
+      if (!isOpen) return null;
+      const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className={`relative bg-navy-900 border border-navy-700 rounded-xl p-6 w-full ${sizes[size]} fade-in`}
+            onClick={e => e.stopPropagation()}>
+            {title && <h3 className="text-lg font-bold text-gray-100 mb-4">{title}</h3>}
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    function StatCard({ label, value, unit = '', className = '' }) {
+      return (
+        <Card className={`text-center ${className}`}>
+          <p className="text-sm text-gray-400 mb-1">{label}</p>
+          <p className="text-3xl md:text-4xl font-extrabold text-gold-400">{value}<span className="text-lg font-medium text-gray-400 ml-1">{unit}</span></p>
+        </Card>
+      );
+    }
+
+    function HorizontalBar({ label, value, maxValue, color, unit = '만원' }) {
+      const pct = maxValue > 0 ? Math.round((value / maxValue) * 100) : 0;
+      return (
+        <div className="mb-3">
+          <div className="flex justify-between text-sm mb-1">
+            <span className="text-gray-300">{label}</span>
+            <span className="text-gray-400 font-medium">{value}{unit}</span>
+          </div>
+          <div className="h-6 bg-navy-800 rounded-full overflow-hidden">
+            <div className={`h-full ${color} rounded-full bar-animate`} style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      );
+    }
+
+    function Spinner() {
+      return (
+        <div className="flex justify-center py-12">
+          <div className="w-8 h-8 border-3 border-gold-500 border-t-transparent rounded-full animate-spin" style={{ borderWidth: '3px' }} />
+        </div>
+      );
+    }
+
+    function EmptyState({ message }) {
+      return (
+        <div className="text-center py-16">
+          <div className="text-5xl mb-4 opacity-30">&#128202;</div>
+          <p className="text-gray-500 text-lg">{message}</p>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Tab Navigation Component
+    // ========================================
+    function TabNav({ activeTab, onTabChange }) {
+      const tabs = [
+        { id: 'input', label: '내 정보 입력', icon: '&#9998;' },
+        { id: 'stats', label: '전체 통계', icon: '&#128200;' },
+        { id: 'data', label: '전체 데이터', icon: '&#128203;' },
+      ];
+      return (
+        <div className="flex bg-navy-900 border border-navy-700 rounded-xl p-1 mb-6">
+          {tabs.map(tab => (
+            <button key={tab.id} onClick={() => onTabChange(tab.id)}
+              className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                activeTab === tab.id
+                  ? 'bg-gold-500 text-navy-900 shadow-lg shadow-gold-500/20'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-navy-800'
+              }`}>
+              <span dangerouslySetInnerHTML={{ __html: tab.icon }} className="mr-1.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Page: Input Tab
+    // ========================================
+    function InputTab({ onTabChange }) {
+      const [form, setForm] = useState({
+        job_category: '', years: '', monthly_salary: '',
+        food: '', housing: '', transport: '', subscription: '', etc_expense: '',
+      });
+      const [submitting, setSubmitting] = useState(false);
+      const [result, setResult] = useState(null);
+      const [error, setError] = useState('');
+
+      const updateField = (key) => (e) => {
+        setForm(prev => ({ ...prev, [key]: e.target.value }));
+        setError('');
+      };
+
+      const totalExpense = useMemo(() => {
+        return EXPENSE_FIELDS.reduce((sum, f) => sum + (parseInt(form[f.key]) || 0), 0);
+      }, [form.food, form.housing, form.transport, form.subscription, form.etc_expense]);
+
+      const handleSubmit = async () => {
+        if (!form.job_category) { setError('직군을 선택해주세요.'); return; }
+        if (!form.years || isNaN(form.years)) { setError('연차를 입력해주세요.'); return; }
+        if (!form.monthly_salary || isNaN(form.monthly_salary)) { setError('월급을 입력해주세요.'); return; }
+
+        setSubmitting(true);
+        setError('');
+        try {
+          const body = {
+            job_category: form.job_category,
+            years: parseInt(form.years),
+            monthly_salary: parseInt(form.monthly_salary),
+            food: parseInt(form.food) || 0,
+            housing: parseInt(form.housing) || 0,
+            transport: parseInt(form.transport) || 0,
+            subscription: parseInt(form.subscription) || 0,
+            etc_expense: parseInt(form.etc_expense) || 0,
+          };
+          await apiFetch('/entries', { method: 'POST', body: JSON.stringify(body) });
+          const rankData = await apiFetch(`/stats/rank?salary=${body.monthly_salary}`);
+          console.log('rankData:', rankData);
+          setResult(rankData || { rank_percent: 0 });
+        } catch (err) {
+          setError(err.message || '제출에 실패했습니다. 다시 시도해주세요.');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      if (result) {
+        const rank = result.rank_percent ?? 0;
+        const isTop = rank <= 30;
+        return (
+          <div className="fade-in text-center py-8">
+            <div className="relative inline-block mb-6">
+              <div className="absolute inset-0 bg-gold-500/20 rounded-full pulse-ring" style={{ margin: '-12px' }} />
+              <div className="relative w-40 h-40 md:w-48 md:h-48 rounded-full bg-gradient-to-br from-gold-400 to-gold-600 flex flex-col items-center justify-center shadow-2xl shadow-gold-500/30">
+                <span className="text-navy-900 text-sm font-semibold">상위</span>
+                <span className="text-navy-900 text-4xl md:text-5xl font-black">{rank}%</span>
+              </div>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-100 mb-2">
+              {isTop ? '대단해요!' : rank <= 60 ? '잘하고 계세요!' : '화이팅!'}
+            </h2>
+            <p className="text-gray-400 mb-8 text-lg">
+              {isTop
+                ? '당신의 연봉은 상위권에 속합니다. 멋진 커리어를 이어가세요!'
+                : rank <= 60
+                  ? '평균 이상의 연봉을 받고 계시네요. 꾸준히 성장 중!'
+                  : '지금의 노력이 쌓이면 분명 좋은 결과로 돌아올 거예요!'}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button variant="primary" size="lg" onClick={() => onTabChange('stats')}>
+                전체 통계 보기
+              </Button>
+              <Button variant="secondary" size="lg" onClick={() => setResult(null)}>
+                다시 입력하기
+              </Button>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="fade-in space-y-6">
+          <Card>
+            <h2 className="text-lg font-bold text-gray-100 mb-4 flex items-center gap-2">
+              <span className="w-7 h-7 bg-gold-500/20 rounded-lg flex items-center justify-center text-gold-400 text-sm">1</span>
+              기본 정보
+            </h2>
+            <div className="space-y-4">
+              <Select label="직군" value={form.job_category} onChange={updateField('job_category')}
+                options={JOB_CATEGORIES} placeholder="직군을 선택하세요" />
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="연차" type="number" value={form.years} onChange={updateField('years')}
+                  placeholder="예: 3" suffix="년차" />
+                <Input label="월급" type="number" value={form.monthly_salary} onChange={updateField('monthly_salary')}
+                  placeholder="예: 300" suffix="만원" />
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-lg font-bold text-gray-100 mb-4 flex items-center gap-2">
+              <span className="w-7 h-7 bg-gold-500/20 rounded-lg flex items-center justify-center text-gold-400 text-sm">2</span>
+              월 지출 내역
+            </h2>
+            <div className="space-y-4">
+              {EXPENSE_FIELDS.map(field => (
+                <Input key={field.key} label={field.label} type="number" value={form[field.key]}
+                  onChange={updateField(field.key)} placeholder={field.placeholder} suffix="만원" />
+              ))}
+            </div>
+            <div className="mt-5 pt-4 border-t border-navy-700 flex justify-between items-center">
+              <span className="text-gray-300 font-medium">총 지출</span>
+              <span className="text-2xl font-bold text-gold-400">{totalExpense}<span className="text-base text-gray-400 ml-1">만원</span></span>
+            </div>
+          </Card>
+
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          <Button variant="primary" size="lg" className="w-full" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? '제출 중...' : '익명으로 제출하기'}
+          </Button>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Page: Stats Tab
+    // ========================================
+    function StatsTab() {
+      const [stats, setStats] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+
+      useEffect(() => {
+        setLoading(true);
+        apiFetch('/stats')
+          .then(data => setStats(data))
+          .catch(err => setError(err.message))
+          .finally(() => setLoading(false));
+      }, []);
+
+      if (loading) return <Spinner />;
+      if (error) return <div className="text-red-400 text-center py-8">{error}</div>;
+      if (!stats || stats.total_count === 0) return <EmptyState message="아직 데이터가 없습니다. 첫 번째 참여자가 되어보세요!" />;
+
+      const avgExpenses = {
+        food: stats.avg_food ?? 0,
+        housing: stats.avg_housing ?? 0,
+        transport: stats.avg_transport ?? 0,
+        subscription: stats.avg_subscription ?? 0,
+        etc_expense: stats.avg_etc_expense ?? 0,
+      };
+      const maxExpense = Math.max(...Object.values(avgExpenses), 1);
+
+      const salaryDistArr = stats.salary_distribution || [];
+      const salaryDist = {};
+      salaryDistArr.forEach(item => { salaryDist[item.range] = item.count; });
+      const maxDistCount = Math.max(...SALARY_RANGES.map(r => salaryDist[r.key] || 0), 1);
+
+      const jobStats = stats.job_stats || [];
+
+      return (
+        <div className="fade-in space-y-6">
+          <div className="grid grid-cols-3 gap-3 md:gap-4">
+            <StatCard label="참여자 수" value={stats.total_count} unit="명" />
+            <StatCard label="평균 월급" value={Math.round(stats.avg_salary || 0)} unit="만원" />
+            <StatCard label="평균 총 지출" value={Math.round(stats.avg_total_expense || 0)} unit="만원" />
+          </div>
+
+          <Card>
+            <h3 className="text-lg font-bold text-gray-100 mb-5">카테고리별 평균 지출</h3>
+            {Object.entries(CATEGORY_COLORS).map(([key, cfg]) => (
+              <HorizontalBar key={key} label={cfg.label} value={Math.round(avgExpenses[key])}
+                maxValue={maxExpense} color={cfg.bg} />
+            ))}
+          </Card>
+
+          <Card>
+            <h3 className="text-lg font-bold text-gray-100 mb-5">월급 분포</h3>
+            {SALARY_RANGES.map(range => {
+              const count = salaryDist[range.key] || 0;
+              const pct = maxDistCount > 0 ? Math.round((count / maxDistCount) * 100) : 0;
+              return (
+                <div key={range.key} className="mb-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-300">{range.label}</span>
+                    <span className="text-gray-400 font-medium">{count}명</span>
+                  </div>
+                  <div className="h-6 bg-navy-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-gold-500 to-gold-400 rounded-full bar-animate"
+                      style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+
+          {jobStats.length > 0 && (
+            <Card>
+              <h3 className="text-lg font-bold text-gray-100 mb-5">직군별 평균</h3>
+              <div className="overflow-x-auto -mx-5 md:-mx-6 px-5 md:px-6">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-navy-700">
+                      <th className="text-left text-gray-400 font-medium pb-3 pr-4">직군</th>
+                      <th className="text-right text-gray-400 font-medium pb-3 px-4">평균 월급</th>
+                      <th className="text-right text-gray-400 font-medium pb-3 px-4">평균 지출</th>
+                      <th className="text-right text-gray-400 font-medium pb-3 pl-4">참여자</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobStats.map((row, i) => (
+                      <tr key={i} className="border-b border-navy-800 last:border-0">
+                        <td className="py-3 pr-4 text-gray-200 font-medium">{row.job_category}</td>
+                        <td className="py-3 px-4 text-right text-gold-400 font-semibold">{Math.round(row.avg_salary)}만원</td>
+                        <td className="py-3 px-4 text-right text-gray-300">{Math.round(row.avg_total_expense)}만원</td>
+                        <td className="py-3 pl-4 text-right text-gray-400">{row.count}명</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Page: Data Tab
+    // ========================================
+    function DataTab() {
+      const [entries, setEntries] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+      const [deleteTarget, setDeleteTarget] = useState(null);
+      const [deleting, setDeleting] = useState(false);
+
+      const fetchEntries = useCallback(() => {
+        setLoading(true);
+        apiFetch('/entries')
+          .then(data => setEntries(Array.isArray(data) ? data : []))
+          .catch(err => setError(err.message))
+          .finally(() => setLoading(false));
+      }, []);
+
+      useEffect(() => { fetchEntries(); }, [fetchEntries]);
+
+      const handleDelete = async () => {
+        if (!deleteTarget) return;
+        setDeleting(true);
+        try {
+          await apiFetch(`/entries/${deleteTarget}`, { method: 'DELETE' });
+          setEntries(prev => prev.filter(e => e.id !== deleteTarget));
+          setDeleteTarget(null);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setDeleting(false);
+        }
+      };
+
+      const formatDate = (dateStr) => {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+      };
+
+      if (loading) return <Spinner />;
+      if (error) return <div className="text-red-400 text-center py-8">{error}</div>;
+      if (entries.length === 0) return <EmptyState message="아직 등록된 데이터가 없습니다." />;
+
+      return (
+        <div className="fade-in">
+          <Card className="!p-0 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-navy-800">
+                    <th className="text-left text-gray-400 font-medium py-3 px-4">직군</th>
+                    <th className="text-right text-gray-400 font-medium py-3 px-4">연차</th>
+                    <th className="text-right text-gray-400 font-medium py-3 px-4">월급</th>
+                    <th className="text-right text-gray-400 font-medium py-3 px-4">총지출</th>
+                    <th className="text-center text-gray-400 font-medium py-3 px-4">작성일</th>
+                    <th className="text-center text-gray-400 font-medium py-3 px-4 w-16"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {entries.map(entry => {
+                    const total = (entry.food || 0) + (entry.housing || 0) + (entry.transport || 0) + (entry.subscription || 0) + (entry.etc_expense || 0);
+                    return (
+                      <tr key={entry.id} className="border-t border-navy-800 hover:bg-navy-800/50 transition-colors">
+                        <td className="py-3 px-4 text-gray-200">{entry.job_category}</td>
+                        <td className="py-3 px-4 text-right text-gray-300">{entry.years}년</td>
+                        <td className="py-3 px-4 text-right text-gold-400 font-semibold">{entry.monthly_salary}만원</td>
+                        <td className="py-3 px-4 text-right text-gray-300">{total}만원</td>
+                        <td className="py-3 px-4 text-center text-gray-400">{formatDate(entry.created_at)}</td>
+                        <td className="py-3 px-4 text-center">
+                          <button onClick={() => setDeleteTarget(entry.id)}
+                            className="text-gray-500 hover:text-red-400 transition-colors p-1" aria-label="삭제">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <Modal isOpen={deleteTarget !== null} onClose={() => setDeleteTarget(null)} title="데이터 삭제" size="sm">
+            <p className="text-gray-300 mb-6">이 항목을 삭제하시겠습니까? 삭제된 데이터는 복구할 수 없습니다.</p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="ghost" onClick={() => setDeleteTarget(null)}>취소</Button>
+              <Button variant="danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? '삭제 중...' : '삭제'}
+              </Button>
+            </div>
+          </Modal>
+        </div>
+      );
+    }
+
+    // ========================================
+    // App Component
+    // ========================================
+    function App() {
+      const [activeTab, setActiveTab] = useState('input');
+
+      return (
+        <div className="min-h-screen bg-navy-950">
+          <header className="bg-gradient-to-r from-navy-900 to-navy-800 border-b border-navy-700">
+            <div className="max-w-2xl mx-auto px-4 py-6 text-center">
+              <h1 className="text-2xl md:text-3xl font-black text-gray-100">
+                익명 연봉 <span className="text-gold-400">&</span> 지출 비교
+              </h1>
+              <p className="text-gray-400 mt-1 text-sm md:text-base">나는 어디쯤일까?</p>
+            </div>
+          </header>
+
+          <main className="max-w-2xl mx-auto px-4 py-6">
+            <TabNav activeTab={activeTab} onTabChange={setActiveTab} />
+            {activeTab === 'input' && <InputTab onTabChange={setActiveTab} />}
+            {activeTab === 'stats' && <StatsTab />}
+            {activeTab === 'data' && <DataTab />}
+          </main>
+
+          <footer className="text-center py-6 text-gray-600 text-xs">
+            모든 데이터는 익명으로 수집됩니다.
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
