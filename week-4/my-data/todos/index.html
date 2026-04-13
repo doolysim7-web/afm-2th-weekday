@@ -39,29 +39,47 @@
       const addTodo = async () => {
         const text = input.trim();
         if (!text) return;
-        const res = await fetch("/api/todos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-        }).then((r) => r.json());
-        setTodos((prev) => [...prev, res.data]);
-        setInput("");
+        try {
+          const res = await fetch("/api/todos", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          }).then((r) => r.json());
+          if (res.success && res.data) {
+            setTodos((prev) => [...prev, res.data]);
+            setInput("");
+          }
+        } catch (err) {
+          console.error("Failed to add todo:", err);
+        }
         inputRef.current?.focus();
       };
 
       const toggleTodo = async (id) => {
-        const todo = todos.find((t) => t.id === id);
-        const res = await fetch(`/api/todos/${id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ done: !todo.done }),
-        }).then((r) => r.json());
-        setTodos((prev) => prev.map((t) => (t.id === id ? res.data : t)));
+        try {
+          const todo = todos.find((t) => t.id === id);
+          const res = await fetch(`/api/todos/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ done: !todo.done }),
+          }).then((r) => r.json());
+          if (res.success && res.data) {
+            setTodos((prev) => prev.map((t) => (t.id === id ? res.data : t)));
+          }
+        } catch (err) {
+          console.error("Failed to toggle todo:", err);
+        }
       };
 
       const deleteTodo = async (id) => {
-        await fetch(`/api/todos/${id}`, { method: "DELETE" });
-        setTodos((prev) => prev.filter((t) => t.id !== id));
+        try {
+          const res = await fetch(`/api/todos/${id}`, { method: "DELETE" }).then((r) => r.json());
+          if (res.success) {
+            setTodos((prev) => prev.filter((t) => t.id !== id));
+          }
+        } catch (err) {
+          console.error("Failed to delete todo:", err);
+        }
       };
 
       const handleKeyDown = (e) => {

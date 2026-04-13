@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>냉장고 재료 기반 AI 레시피</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.3); }
+      50% { box-shadow: 0 0 40px rgba(139, 92, 246, 0.6); }
+    }
+    @keyframes sparkle {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(1.2); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .shimmer-bg {
+      background: linear-gradient(90deg, #7c3aed 25%, #a78bfa 50%, #7c3aed 75%);
+      background-size: 200% 100%;
+      animation: shimmer 2s infinite;
+    }
+    .pulse-glow { animation: pulse-glow 2s infinite; }
+    .sparkle { animation: sparkle 1.5s infinite; }
+    .float-anim { animation: float 3s ease-in-out infinite; }
+    .spin-slow { animation: spin-slow 3s linear infinite; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+    // ========================================
+    // API Configuration
+    // ========================================
+    const API_BASE_URL = window.location.hostname === 'localhost'
+      ? `http://${window.location.hostname}:3000/api`
+      : '/api';
+
+    // ========================================
+    // Design System Components
+    // ========================================
+    function Button({ children, variant = 'primary', size = 'md', disabled = false, onClick, className = '', type = 'button' }) {
+      const base = 'inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+      const variants = {
+        primary: 'bg-indigo-600 hover:bg-indigo-700 text-white focus:ring-indigo-500 shadow-md hover:shadow-lg',
+        secondary: 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 focus:ring-indigo-500',
+        danger: 'bg-red-600 hover:bg-red-700 text-white focus:ring-red-500 shadow-md',
+        ghost: 'bg-transparent hover:bg-gray-100 text-gray-600 focus:ring-gray-400',
+        ai: 'shimmer-bg text-white focus:ring-purple-500 shadow-lg hover:shadow-xl pulse-glow',
+        success: 'bg-emerald-600 text-white focus:ring-emerald-500',
+      };
+      const sizes = {
+        sm: 'px-3 py-1.5 text-sm gap-1.5',
+        md: 'px-4 py-2.5 text-sm gap-2',
+        lg: 'px-6 py-3.5 text-base gap-2.5',
+      };
+      return (
+        <button
+          type={type}
+          disabled={disabled}
+          onClick={onClick}
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ label, type = 'text', value, onChange, placeholder, error, disabled, className = '', ...rest }) {
+      return (
+        <div className={`flex flex-col gap-1.5 ${className}`}>
+          {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+          <input
+            type={type}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            disabled={disabled}
+            className={`w-full px-3.5 py-2.5 rounded-xl border ${error ? 'border-red-400 focus:ring-red-400' : 'border-gray-300 focus:ring-indigo-500'} focus:outline-none focus:ring-2 focus:border-transparent text-sm transition-all duration-200 disabled:bg-gray-100`}
+            {...rest}
+          />
+          {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+      );
+    }
+
+    function Select({ label, value, onChange, options, className = '' }) {
+      return (
+        <div className={`flex flex-col gap-1.5 ${className}`}>
+          {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+          <select
+            value={value}
+            onChange={onChange}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm transition-all duration-200 bg-white"
+          >
+            {options.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    function Card({ children, className = '', onClick }) {
+      return (
+        <div onClick={onClick} className={`bg-white rounded-2xl shadow-sm border border-gray-100 p-5 transition-all duration-200 ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function Modal({ isOpen, onClose, title, children, size = 'md' }) {
+      if (!isOpen) return null;
+      const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className={`relative bg-white rounded-2xl shadow-2xl ${sizes[size]} w-full p-6 z-10`}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+              <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors p-1" aria-label="닫기">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    function Badge({ children, variant = 'default', className = '' }) {
+      const variants = {
+        default: 'bg-gray-100 text-gray-700',
+        danger: 'bg-red-100 text-red-700',
+        warning: 'bg-amber-100 text-amber-700',
+        success: 'bg-emerald-100 text-emerald-700',
+        purple: 'bg-purple-100 text-purple-700',
+      };
+      return (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${variants[variant]} ${className}`}>
+          {children}
+        </span>
+      );
+    }
+
+    function EmptyState({ icon, title, description }) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+          <div className="text-5xl mb-4 opacity-60">{icon}</div>
+          <h3 className="text-lg font-semibold text-gray-500 mb-1">{title}</h3>
+          {description && <p className="text-sm text-gray-400">{description}</p>}
+        </div>
+      );
+    }
+
+    function Spinner({ text }) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 gap-6">
+          <div className="relative">
+            <div className="w-16 h-16 rounded-full border-4 border-purple-200 border-t-purple-600 spin-slow" />
+            <div className="absolute inset-0 flex items-center justify-center text-2xl sparkle">&#10024;</div>
+          </div>
+          {text && <p className="text-purple-600 font-medium text-sm animate-pulse">{text}</p>}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Common / Layout Components
+    // ========================================
+    function Header() {
+      return (
+        <header className="bg-gradient-to-r from-indigo-600 via-purple-600 to-violet-600 text-white shadow-lg">
+          <div className="max-w-4xl mx-auto px-4 py-5 flex items-center gap-3">
+            <span className="text-3xl">&#129482;</span>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">냉장고 재료 기반 AI 레시피</h1>
+              <p className="text-purple-200 text-xs mt-0.5">AI가 냉장고 재료로 맛있는 레시피를 만들어드립니다</p>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    function TabBar({ activeTab, onTabChange }) {
+      const tabs = [
+        { id: 'ingredients', label: '재료 관리', icon: '&#129367;' },
+        { id: 'ai', label: 'AI 레시피 생성', icon: '&#10024;' },
+        { id: 'recipes', label: '저장된 레시피', icon: '&#128214;' },
+      ];
+      return (
+        <div className="bg-white border-b border-gray-200 sticky top-0 z-40">
+          <div className="max-w-4xl mx-auto px-4">
+            <nav className="flex gap-1" aria-label="탭">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => onTabChange(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-3.5 text-sm font-medium border-b-2 transition-all duration-200 ${
+                    activeTab === tab.id
+                      ? 'border-indigo-600 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span dangerouslySetInnerHTML={{ __html: tab.icon }} />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Page: Ingredients Management
+    // ========================================
+    function IngredientsPage() {
+      const [ingredients, setIngredients] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [form, setForm] = useState({ name: '', quantity: '', category: '냉장', exp_date: '' });
+      const [submitting, setSubmitting] = useState(false);
+      const [deleteTarget, setDeleteTarget] = useState(null);
+
+      const fetchIngredients = useCallback(async () => {
+        try {
+          setLoading(true);
+          const res = await fetch(`${API_BASE_URL}/ingredients`);
+          const json = await res.json();
+          const items = json.data;
+          setIngredients(Array.isArray(items) ? items : []);
+        } catch (err) {
+          console.error('재료 목록 조회 실패:', err);
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => { fetchIngredients(); }, [fetchIngredients]);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!form.name.trim() || !form.quantity.trim()) return;
+        try {
+          setSubmitting(true);
+          await fetch(`${API_BASE_URL}/ingredients`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(form),
+          });
+          setForm({ name: '', quantity: '', category: '냉장', exp_date: '' });
+          await fetchIngredients();
+        } catch (err) {
+          console.error('재료 등록 실패:', err);
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      const handleDelete = async () => {
+        if (!deleteTarget) return;
+        try {
+          await fetch(`${API_BASE_URL}/ingredients/${deleteTarget.id}`, { method: 'DELETE' });
+          setDeleteTarget(null);
+          await fetchIngredients();
+        } catch (err) {
+          console.error('재료 삭제 실패:', err);
+        }
+      };
+
+      const getExpBadge = (expDate) => {
+        if (!expDate) return null;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const exp = new Date(expDate);
+        exp.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) return <Badge variant="danger">만료</Badge>;
+        if (diffDays <= 7) return <Badge variant="danger">임박 (D-{diffDays})</Badge>;
+        return null;
+      };
+
+      const categoryIcon = (cat) => {
+        if (cat === '냉장') return '&#10052;&#65039;';
+        if (cat === '냉동') return '&#129482;';
+        return '&#9728;&#65039;';
+      };
+
+      return (
+        <div className="space-y-6">
+          {/* Registration Form */}
+          <Card>
+            <h2 className="text-base font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <span>&#10133;</span> 재료 등록
+            </h2>
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="재료명"
+                value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder="예: 당근"
+                required
+              />
+              <Input
+                label="수량"
+                value={form.quantity}
+                onChange={e => setForm({ ...form, quantity: e.target.value })}
+                placeholder="예: 3개"
+                required
+              />
+              <Select
+                label="보관방법"
+                value={form.category}
+                onChange={e => setForm({ ...form, category: e.target.value })}
+                options={[
+                  { value: '냉장', label: '냉장' },
+                  { value: '냉동', label: '냉동' },
+                  { value: '실온', label: '실온' },
+                ]}
+              />
+              <Input
+                label="유통기한"
+                type="date"
+                value={form.exp_date}
+                onChange={e => setForm({ ...form, exp_date: e.target.value })}
+              />
+              <div className="sm:col-span-2">
+                <Button type="submit" disabled={submitting || !form.name.trim() || !form.quantity.trim()} className="w-full">
+                  {submitting ? '등록 중...' : '재료 등록'}
+                </Button>
+              </div>
+            </form>
+          </Card>
+
+          {/* Ingredients List */}
+          <Card className="!p-0 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100">
+              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>&#128230;</span> 재료 목록
+                {!loading && <Badge variant="purple">{ingredients.length}개</Badge>}
+              </h2>
+            </div>
+            {loading ? (
+              <div className="flex justify-center py-10"><div className="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full spin-slow" /></div>
+            ) : ingredients.length === 0 ? (
+              <EmptyState icon="&#129367;" title="등록된 재료가 없습니다" description="위 폼에서 재료를 등록해보세요" />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-600">
+                    <tr>
+                      <th className="text-left px-5 py-3 font-semibold">재료명</th>
+                      <th className="text-left px-5 py-3 font-semibold">수량</th>
+                      <th className="text-left px-5 py-3 font-semibold hidden sm:table-cell">보관</th>
+                      <th className="text-left px-5 py-3 font-semibold">유통기한</th>
+                      <th className="text-right px-5 py-3 font-semibold">삭제</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {ingredients.map(item => (
+                      <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-5 py-3 font-medium text-gray-900">{item.name}</td>
+                        <td className="px-5 py-3 text-gray-600">{item.quantity}</td>
+                        <td className="px-5 py-3 text-gray-600 hidden sm:table-cell">
+                          <span dangerouslySetInnerHTML={{ __html: categoryIcon(item.category) }} /> {item.category}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-gray-600">{item.exp_date || '-'}</span>
+                            {getExpBadge(item.exp_date)}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(item)}>
+                            <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {/* Delete Confirmation Modal */}
+          <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="재료 삭제" size="sm">
+            <p className="text-sm text-gray-600 mb-6">
+              <span className="font-semibold text-gray-900">{deleteTarget?.name}</span>을(를) 삭제하시겠습니까?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)}>취소</Button>
+              <Button variant="danger" size="sm" onClick={handleDelete}>삭제</Button>
+            </div>
+          </Modal>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Page: AI Recipe Generation
+    // ========================================
+    function AIRecipePage() {
+      const [ingredients, setIngredients] = useState([]);
+      const [loadingIngredients, setLoadingIngredients] = useState(true);
+      const [recipes, setRecipes] = useState([]);
+      const [generating, setGenerating] = useState(false);
+      const [savedSet, setSavedSet] = useState(new Set());
+      const [savingSet, setSavingSet] = useState(new Set());
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        (async () => {
+          try {
+            const res = await fetch(`${API_BASE_URL}/ingredients`);
+            const json = await res.json();
+            const items = json.data;
+            setIngredients(Array.isArray(items) ? items : []);
+          } catch (err) {
+            console.error('재료 조회 실패:', err);
+          } finally {
+            setLoadingIngredients(false);
+          }
+        })();
+      }, []);
+
+      const handleGenerate = async () => {
+        try {
+          setGenerating(true);
+          setError(null);
+          setRecipes([]);
+          setSavedSet(new Set());
+          const res = await fetch(`${API_BASE_URL}/recipes/generate`, { method: 'POST' });
+          const json = await res.json();
+          const items = json.data;
+          setRecipes(Array.isArray(items) ? items : []);
+        } catch (err) {
+          setError('AI 레시피 생성에 실패했습니다. 다시 시도해주세요.');
+          console.error('레시피 생성 실패:', err);
+        } finally {
+          setGenerating(false);
+        }
+      };
+
+      const handleSave = async (recipe, index) => {
+        try {
+          setSavingSet(prev => new Set(prev).add(index));
+          await fetch(`${API_BASE_URL}/recipes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: recipe.title,
+              ingredients: recipe.ingredients,
+              instructions: recipe.instructions,
+            }),
+          });
+          setSavedSet(prev => new Set(prev).add(index));
+        } catch (err) {
+          console.error('레시피 저장 실패:', err);
+        } finally {
+          setSavingSet(prev => {
+            const next = new Set(prev);
+            next.delete(index);
+            return next;
+          });
+        }
+      };
+
+      return (
+        <div className="space-y-6">
+          {/* AI Hero Section */}
+          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700 p-6 sm:p-8 text-white">
+            <div className="absolute top-4 right-6 text-6xl opacity-20 float-anim">&#129302;</div>
+            <div className="absolute bottom-4 left-8 text-4xl opacity-10 sparkle">&#10024;</div>
+            <div className="relative z-10">
+              <h2 className="text-xl sm:text-2xl font-bold mb-2 flex items-center gap-2">
+                <span className="sparkle">&#10024;</span> AI 레시피 생성
+              </h2>
+              <p className="text-purple-200 text-sm mb-5">냉장고에 있는 재료들로 AI가 맞춤 레시피를 추천해드립니다</p>
+
+              {/* Ingredient Tags */}
+              <div className="mb-5">
+                <p className="text-xs text-purple-300 mb-2 font-medium">현재 냉장고 재료</p>
+                {loadingIngredients ? (
+                  <div className="flex gap-2">
+                    <div className="h-7 w-16 bg-white/20 rounded-full animate-pulse" />
+                    <div className="h-7 w-20 bg-white/20 rounded-full animate-pulse" />
+                    <div className="h-7 w-14 bg-white/20 rounded-full animate-pulse" />
+                  </div>
+                ) : ingredients.length === 0 ? (
+                  <p className="text-purple-300 text-sm">등록된 재료가 없습니다</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {ingredients.map(item => (
+                      <span key={item.id} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-white/20 backdrop-blur-sm border border-white/20">
+                        {item.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Generate Button */}
+              {ingredients.length === 0 && !loadingIngredients ? (
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-3 text-sm text-purple-200 border border-white/10">
+                  &#128161; 먼저 <span className="font-semibold text-white">"재료 관리"</span> 탭에서 재료를 등록해주세요
+                </div>
+              ) : (
+                <Button
+                  variant="ai"
+                  size="lg"
+                  onClick={handleGenerate}
+                  disabled={generating || loadingIngredients || ingredients.length === 0}
+                  className="w-full sm:w-auto !rounded-xl text-base"
+                >
+                  {generating ? (
+                    <>&#9203; 생성 중...</>
+                  ) : (
+                    <>&#10024; AI 레시피 생성하기</>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Loading State */}
+          {generating && (
+            <Card className="!border-purple-200 !bg-purple-50/50">
+              <Spinner text="AI가 레시피를 생성하고 있습니다..." />
+            </Card>
+          )}
+
+          {/* Error State */}
+          {error && (
+            <Card className="!border-red-200 !bg-red-50">
+              <div className="flex items-center gap-3 text-red-600">
+                <span className="text-xl">&#9888;&#65039;</span>
+                <p className="text-sm font-medium">{error}</p>
+              </div>
+            </Card>
+          )}
+
+          {/* Generated Recipes */}
+          {recipes.length > 0 && (
+            <div className="space-y-4">
+              <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                <span>&#127860;</span> AI 추천 레시피
+              </h3>
+              <div className="grid gap-4">
+                {recipes.map((recipe, idx) => (
+                  <Card key={idx} className="hover:shadow-md !border-purple-100">
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <h4 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <span className="text-purple-500">&#127859;</span> {recipe.title}
+                      </h4>
+                      <Badge variant="purple">#{idx + 1}</Badge>
+                    </div>
+
+                    <div className="mb-3">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">재료</p>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {typeof recipe.ingredients === 'string' ? recipe.ingredients : JSON.stringify(recipe.ingredients)}
+                      </p>
+                    </div>
+
+                    <div className="mb-4">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">조리법</p>
+                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                        {typeof recipe.instructions === 'string' ? recipe.instructions : JSON.stringify(recipe.instructions)}
+                      </p>
+                    </div>
+
+                    {savedSet.has(idx) ? (
+                      <Button variant="success" size="sm" disabled className="w-full sm:w-auto">
+                        &#9989; 저장 완료!
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleSave(recipe, idx)}
+                        disabled={savingSet.has(idx)}
+                        className="w-full sm:w-auto"
+                      >
+                        {savingSet.has(idx) ? '저장 중...' : '이 레시피 저장'}
+                      </Button>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Page: Saved Recipes
+    // ========================================
+    function SavedRecipesPage() {
+      const [recipes, setRecipes] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [expandedId, setExpandedId] = useState(null);
+      const [deleteTarget, setDeleteTarget] = useState(null);
+
+      const fetchRecipes = useCallback(async () => {
+        try {
+          setLoading(true);
+          const res = await fetch(`${API_BASE_URL}/recipes`);
+          const json = await res.json();
+          const items = json.data;
+          setRecipes(Array.isArray(items) ? items : []);
+        } catch (err) {
+          console.error('레시피 조회 실패:', err);
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => { fetchRecipes(); }, [fetchRecipes]);
+
+      const handleDelete = async () => {
+        if (!deleteTarget) return;
+        try {
+          await fetch(`${API_BASE_URL}/recipes/${deleteTarget.id}`, { method: 'DELETE' });
+          setDeleteTarget(null);
+          await fetchRecipes();
+        } catch (err) {
+          console.error('레시피 삭제 실패:', err);
+        }
+      };
+
+      const toggleExpand = (id) => {
+        setExpandedId(prev => prev === id ? null : id);
+      };
+
+      return (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <span>&#128214;</span> 저장된 레시피
+              {!loading && <Badge variant="purple">{recipes.length}개</Badge>}
+            </h2>
+          </div>
+
+          {loading ? (
+            <Card><div className="flex justify-center py-10"><div className="w-8 h-8 border-3 border-indigo-200 border-t-indigo-600 rounded-full spin-slow" /></div></Card>
+          ) : recipes.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon="&#128214;"
+                title="저장된 레시피가 없습니다"
+                description="AI 레시피 생성 탭에서 레시피를 만들어 저장해보세요"
+              />
+            </Card>
+          ) : (
+            <div className="grid gap-3">
+              {recipes.map(recipe => {
+                const isExpanded = expandedId === recipe.id;
+                return (
+                  <Card key={recipe.id} className={`!p-0 overflow-hidden transition-all duration-300 ${isExpanded ? '!border-indigo-200 !shadow-md' : 'hover:!border-gray-200'}`}>
+                    <button
+                      onClick={() => toggleExpand(recipe.id)}
+                      className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">&#127859;</span>
+                        <span className="font-semibold text-gray-900">{recipe.title}</span>
+                      </div>
+                      <svg
+                        className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="px-5 pb-5 border-t border-gray-100 pt-4 space-y-3">
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">재료</p>
+                          <p className="text-sm text-gray-700 leading-relaxed">
+                            {typeof recipe.ingredients === 'string' ? recipe.ingredients : JSON.stringify(recipe.ingredients)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">조리법</p>
+                          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                            {typeof recipe.instructions === 'string' ? recipe.instructions : JSON.stringify(recipe.instructions)}
+                          </p>
+                        </div>
+                        <div className="pt-2">
+                          <Button variant="danger" size="sm" onClick={(e) => { e.stopPropagation(); setDeleteTarget(recipe); }}>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            삭제
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Delete Confirmation Modal */}
+          <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="레시피 삭제" size="sm">
+            <p className="text-sm text-gray-600 mb-6">
+              <span className="font-semibold text-gray-900">{deleteTarget?.title}</span> 레시피를 삭제하시겠습니까?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" size="sm" onClick={() => setDeleteTarget(null)}>취소</Button>
+              <Button variant="danger" size="sm" onClick={handleDelete}>삭제</Button>
+            </div>
+          </Modal>
+        </div>
+      );
+    }
+
+    // ========================================
+    // App Component
+    // ========================================
+    function App() {
+      const [activeTab, setActiveTab] = useState('ingredients');
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <Header />
+          <TabBar activeTab={activeTab} onTabChange={setActiveTab} />
+          <main className="max-w-4xl mx-auto px-4 py-6">
+            {activeTab === 'ingredients' && <IngredientsPage />}
+            {activeTab === 'ai' && <AIRecipePage />}
+            {activeTab === 'recipes' && <SavedRecipesPage />}
+          </main>
+          <footer className="text-center text-xs text-gray-400 py-6">
+            냉장고 재료 기반 AI 레시피 &copy; 2026
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

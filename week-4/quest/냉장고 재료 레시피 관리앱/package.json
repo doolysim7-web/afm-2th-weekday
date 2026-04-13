@@ -1,0 +1,14 @@
+{
+  "name": "fridge-recipe-app",
+  "version": "1.0.0",
+  "description": "냉장고 재료 레시피 관리앱",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.13.0"
+  }
+}

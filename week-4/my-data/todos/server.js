@@ -1,63 +1,115 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const Database = require('better-sqlite3');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = path.join(__dirname);
+const DB_PATH = path.join(__dirname, '..', 'todos.db');
 
 // ── Middleware ──────────────────────────────────────────
 app.use(express.json());
-app.use(express.static(DATA_DIR));
+app.use(express.static(path.join(__dirname)));
 
-// ── Helpers ────────────────────────────────────────────
-let nextId = 1;
+// ── Database (Lazy Init) ───────────────────────────────
+let db = null;
+let dbInitialized = false;
 
-function initNextId() {
-  const files = fs.readdirSync(DATA_DIR).filter(f => /^todo-\d+$/.test(f));
-  if (files.length === 0) { nextId = 1; return; }
-  const maxId = Math.max(...files.map(f => Number(f.split('-')[1])));
-  nextId = maxId + 1;
+function getDB() {
+  if (!db) {
+    db = new Database(DB_PATH);
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+  }
+  if (!dbInitialized) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+      );
+      CREATE TABLE IF NOT EXISTS todos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        text TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+    dbInitialized = true;
+  }
+  return db;
 }
 
-function parseTodoFile(filename) {
-  const id = Number(filename.split('-')[1]);
-  const content = fs.readFileSync(path.join(DATA_DIR, filename), 'utf-8');
-  const lines = content.split('\n');
-
-  // text: first line after "# Todo N: "
-  const titleMatch = lines[0]?.match(/^# Todo \d+: (.+)$/);
-  const text = titleMatch ? titleMatch[1] : '';
-
-  // done: true only if ALL checkboxes are checked
-  const checkboxLines = lines.filter(l => /^- \[[ x]\]/.test(l));
-  const done = checkboxLines.length > 0 && checkboxLines.every(l => /^- \[x\]/.test(l));
-
-  return { id, text, done };
+// Helper: convert done 0/1 to boolean
+function formatTodo(row) {
+  return { ...row, done: !!row.done };
 }
 
+// ── Todo File Sync ────────────────────────────────────
 function buildFileContent(id, text, done) {
   const checkbox = done ? '- [x]' : '- [ ]';
   return `# Todo ${id}: ${text}\n\n${checkbox} ${text}\n`;
 }
 
-// Initialize nextId on startup
-initNextId();
+function writeTodoFile(id, text, done) {
+  fs.writeFileSync(path.join(__dirname, `todo-${id}`), buildFileContent(id, text, done), 'utf-8');
+}
 
-// ── API Routes ─────────────────────────────────────────
+function deleteTodoFile(id) {
+  const filepath = path.join(__dirname, `todo-${id}`);
+  if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+}
 
-// GET /api/todos — list all todos sorted by id
-app.get('/api/todos', (_req, res) => {
+// ── API Routes: Users ──────────────────────────────────
+
+// GET /api/users — list all users
+app.get('/api/users', (_req, res) => {
   try {
-    const files = fs.readdirSync(DATA_DIR).filter(f => /^todo-\d+$/.test(f));
-    const todos = files.map(parseTodoFile).sort((a, b) => a.id - b.id);
-    res.json({ success: true, data: todos });
+    const users = getDB().prepare('SELECT id, name FROM users ORDER BY id').all();
+    res.json({ success: true, data: users });
   } catch (err) {
-    res.status(500).json({ success: false, message: 'Failed to read todos' });
+    res.status(500).json({ success: false, message: 'Failed to fetch users' });
   }
 });
 
-// POST /api/todos — create a new todo
+// POST /api/users — create a new user
+app.post('/api/users', (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'name is required' });
+    }
+
+    const trimmed = name.trim();
+    const existing = getDB().prepare('SELECT id FROM users WHERE name = ?').get(trimmed);
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'User already exists' });
+    }
+
+    const result = getDB().prepare('INSERT INTO users (name) VALUES (?)').run(trimmed);
+    res.status(201).json({ success: true, data: { id: result.lastInsertRowid, name: trimmed } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to create user' });
+  }
+});
+
+// ── API Routes: Simple Todos (no user) ────────────────
+
+// GET /api/todos — list all todos
+app.get('/api/todos', (_req, res) => {
+  try {
+    const todos = getDB()
+      .prepare('SELECT id, text, done FROM todos ORDER BY id')
+      .all()
+      .map(formatTodo);
+    res.json({ success: true, data: todos });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch todos' });
+  }
+});
+
+// POST /api/todos — create a todo (assigns to user_id 1 by default)
 app.post('/api/todos', (req, res) => {
   try {
     const { text } = req.body;
@@ -65,58 +117,124 @@ app.post('/api/todos', (req, res) => {
       return res.status(400).json({ success: false, message: 'text is required' });
     }
 
-    const id = nextId++;
-    const content = buildFileContent(id, text.trim(), false);
-    fs.writeFileSync(path.join(DATA_DIR, `todo-${id}`), content, 'utf-8');
+    // Ensure at least one user exists
+    let user = getDB().prepare('SELECT id FROM users ORDER BY id LIMIT 1').get();
+    if (!user) {
+      getDB().prepare("INSERT INTO users (name) VALUES ('Default')").run();
+      user = getDB().prepare('SELECT id FROM users ORDER BY id LIMIT 1').get();
+    }
 
-    res.status(201).json({ success: true, data: { id, text: text.trim(), done: false } });
+    const trimmed = text.trim();
+    const result = getDB()
+      .prepare('INSERT INTO todos (user_id, text) VALUES (?, ?)')
+      .run(user.id, trimmed);
+
+    const todo = getDB()
+      .prepare('SELECT id, text, done FROM todos WHERE id = ?')
+      .get(result.lastInsertRowid);
+
+    writeTodoFile(todo.id, todo.text, todo.done);
+    res.status(201).json({ success: true, data: formatTodo(todo) });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to create todo' });
   }
 });
 
-// PATCH /api/todos/:id — update a todo (toggle done or change text)
+// ── API Routes: User-scoped Todos ─────────────────────
+
+// GET /api/users/:userId/todos — get todos for a user
+app.get('/api/users/:userId/todos', (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    const user = getDB().prepare('SELECT id FROM users WHERE id = ?').get(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const todos = getDB()
+      .prepare('SELECT id, user_id, text, done, created_at FROM todos WHERE user_id = ? ORDER BY id')
+      .all(userId)
+      .map(formatTodo);
+
+    res.json({ success: true, data: todos });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to fetch todos' });
+  }
+});
+
+// POST /api/users/:userId/todos — create a todo for a user
+app.post('/api/users/:userId/todos', (req, res) => {
+  try {
+    const userId = Number(req.params.userId);
+    const user = getDB().prepare('SELECT id FROM users WHERE id = ?').get(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ success: false, message: 'text is required' });
+    }
+
+    const trimmed = text.trim();
+    const result = getDB()
+      .prepare('INSERT INTO todos (user_id, text) VALUES (?, ?)')
+      .run(userId, trimmed);
+
+    const todo = getDB()
+      .prepare('SELECT id, user_id, text, done, created_at FROM todos WHERE id = ?')
+      .get(result.lastInsertRowid);
+
+    writeTodoFile(todo.id, todo.text, todo.done);
+    res.status(201).json({ success: true, data: formatTodo(todo) });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to create todo' });
+  }
+});
+
+// PATCH /api/todos/:id — update a todo (done, text)
 app.patch('/api/todos/:id', (req, res) => {
   try {
     const id = Number(req.params.id);
-    const filepath = path.join(DATA_DIR, `todo-${id}`);
+    const existing = getDB()
+      .prepare('SELECT id, user_id, text, done, created_at FROM todos WHERE id = ?')
+      .get(id);
 
-    if (!fs.existsSync(filepath)) {
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Todo not found' });
     }
 
-    const current = parseTodoFile(`todo-${id}`);
     const { done, text } = req.body;
+    const updates = [];
+    const values = [];
 
-    // Update text if provided
     if (text !== undefined) {
-      current.text = text.trim();
-      current.done = false; // reset to unchecked with single new checkbox
-    }
-
-    // Update done if provided
-    if (done !== undefined) {
-      current.done = done;
-    }
-
-    // If only toggling done (no text change), update checkboxes in-place
-    if (text !== undefined) {
-      // Text changed: rewrite with single checkbox
-      const content = buildFileContent(id, current.text, current.done);
-      fs.writeFileSync(filepath, content, 'utf-8');
-    } else {
-      // Toggle done: flip all checkboxes in the existing file
-      let fileContent = fs.readFileSync(filepath, 'utf-8');
-      if (current.done) {
-        fileContent = fileContent.replace(/- \[ \]/g, '- [x]');
-      } else {
-        fileContent = fileContent.replace(/- \[x\]/g, '- [ ]');
+      const trimmed = (text || '').trim();
+      if (!trimmed) {
+        return res.status(400).json({ success: false, message: 'text cannot be empty' });
       }
-      // Also update title if text was on the title line (shouldn't change, but keep consistent)
-      fs.writeFileSync(filepath, fileContent, 'utf-8');
+      updates.push('text = ?');
+      values.push(trimmed);
     }
 
-    res.json({ success: true, data: { id, text: current.text, done: current.done } });
+    if (done !== undefined) {
+      updates.push('done = ?');
+      values.push(done ? 1 : 0);
+    }
+
+    if (updates.length === 0) {
+      return res.json({ success: true, data: formatTodo(existing) });
+    }
+
+    values.push(id);
+    getDB().prepare(`UPDATE todos SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+
+    const updated = getDB()
+      .prepare('SELECT id, user_id, text, done, created_at FROM todos WHERE id = ?')
+      .get(id);
+
+    writeTodoFile(updated.id, updated.text, updated.done);
+    res.json({ success: true, data: formatTodo(updated) });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to update todo' });
   }
@@ -126,16 +244,17 @@ app.patch('/api/todos/:id', (req, res) => {
 app.delete('/api/todos/:id', (req, res) => {
   try {
     const id = Number(req.params.id);
-    const filepath = path.join(DATA_DIR, `todo-${id}`);
+    const existing = getDB()
+      .prepare('SELECT id, user_id, text, done, created_at FROM todos WHERE id = ?')
+      .get(id);
 
-    if (!fs.existsSync(filepath)) {
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Todo not found' });
     }
 
-    const todo = parseTodoFile(`todo-${id}`);
-    fs.unlinkSync(filepath);
-
-    res.json({ success: true, data: todo });
+    getDB().prepare('DELETE FROM todos WHERE id = ?').run(id);
+    deleteTodoFile(id);
+    res.json({ success: true, data: formatTodo(existing) });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Failed to delete todo' });
   }
@@ -143,7 +262,7 @@ app.delete('/api/todos/:id', (req, res) => {
 
 // ── SPA Fallback ───────────────────────────────────────
 app.get('/{*splat}', (_req, res) => {
-  res.sendFile(path.join(DATA_DIR, 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 // ── Start / Export ─────────────────────────────────────
