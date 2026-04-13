@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>밸런스 게임</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 800: '#1a1a2e', 900: '#0f0f23' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+    body { font-family: 'Noto Sans KR', sans-serif; }
+
+    @keyframes pulse-vs {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    .animate-pulse-vs { animation: pulse-vs 2s ease-in-out infinite; }
+
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-slide-in { animation: slide-in 0.4s ease-out; }
+
+    @keyframes pop {
+      0% { transform: scale(1); }
+      50% { transform: scale(0.95); }
+      100% { transform: scale(1); }
+    }
+    .animate-pop { animation: pop 0.2s ease-in-out; }
+
+    .option-card {
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .option-card:hover:not(.voted) {
+      transform: scale(1.03);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    }
+    .option-card:active:not(.voted) {
+      transform: scale(0.97);
+    }
+
+    .progress-bar-inner {
+      transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="bg-[#0f0f23] min-h-screen text-white">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useEffect, useCallback, useMemo, useRef } = React;
+
+    // ========================================
+    // API Configuration
+    // ========================================
+    const API_BASE_URL = window.location.origin + '/api';
+
+    // ========================================
+    // Vote Tracking (no restriction - anyone can vote multiple times)
+    // ========================================
+
+    // ========================================
+    // Design System Components
+    // ========================================
+    function Button({ variant = 'primary', size = 'md', disabled = false, onClick, className = '', children, ...props }) {
+      const base = 'font-bold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#0f0f23] disabled:opacity-50 disabled:cursor-not-allowed';
+      const variants = {
+        primary: 'bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white focus:ring-indigo-400 shadow-lg shadow-indigo-500/25',
+        secondary: 'bg-slate-700 hover:bg-slate-600 text-slate-200 focus:ring-slate-400',
+        danger: 'bg-red-600/20 hover:bg-red-600/40 text-red-400 focus:ring-red-400',
+        ghost: 'bg-transparent hover:bg-white/10 text-slate-400 hover:text-white focus:ring-white/20',
+      };
+      const sizes = {
+        sm: 'px-3 py-1.5 text-sm',
+        md: 'px-5 py-2.5 text-base',
+        lg: 'px-7 py-3.5 text-lg',
+      };
+      return (
+        <button
+          className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+          disabled={disabled}
+          onClick={onClick}
+          {...props}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ label, value, onChange, placeholder, error, disabled = false, className = '', ...props }) {
+      return (
+        <div className={`flex flex-col gap-1.5 ${className}`}>
+          {label && <label className="text-sm font-medium text-slate-300">{label}</label>}
+          <input
+            className={`w-full px-4 py-3 bg-slate-800/80 border ${error ? 'border-red-500' : 'border-slate-600/50'} rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-200 disabled:opacity-50`}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            disabled={disabled}
+            {...props}
+          />
+          {error && <p className="text-red-400 text-xs">{error}</p>}
+        </div>
+      );
+    }
+
+    function Card({ children, className = '' }) {
+      return (
+        <div className={`bg-slate-800/60 backdrop-blur-sm border border-slate-700/50 rounded-2xl shadow-xl ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function Modal({ isOpen, onClose, title, children, size = 'sm' }) {
+      if (!isOpen) return null;
+      const sizes = { sm: 'max-w-sm', md: 'max-w-md', lg: 'max-w-lg' };
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className={`relative ${sizes[size]} w-full bg-slate-800 border border-slate-600/50 rounded-2xl p-6 shadow-2xl animate-slide-in`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {title && <h3 className="text-lg font-bold text-white mb-4">{title}</h3>}
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Header Component
+    // ========================================
+    function Header() {
+      return (
+        <header className="text-center py-10 md:py-14">
+          <div className="flex items-center justify-center gap-3 mb-3">
+            <span className="text-4xl md:text-5xl">&#9878;</span>
+            <h1 className="text-4xl md:text-5xl font-black bg-gradient-to-r from-indigo-400 via-purple-400 to-rose-400 bg-clip-text text-transparent">
+              밸런스 게임
+            </h1>
+            <span className="text-4xl md:text-5xl">&#9878;</span>
+          </div>
+          <p className="text-slate-400 text-lg md:text-xl font-medium tracking-wide">당신의 선택은?</p>
+        </header>
+      );
+    }
+
+    // ========================================
+    // Game Create Form Component
+    // ========================================
+    function GameCreateForm({ onCreated }) {
+      const [title, setTitle] = useState('');
+      const [optionA, setOptionA] = useState('');
+      const [optionB, setOptionB] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!title.trim() || !optionA.trim() || !optionB.trim()) {
+          setError('모든 항목을 입력해주세요.');
+          return;
+        }
+        setError('');
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_BASE_URL}/games`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title.trim(), option_a: optionA.trim(), option_b: optionB.trim() }),
+          });
+          const json = await res.json();
+          if (!res.ok || !json.success) throw new Error(json.message || '게임 생성 실패');
+          setTitle('');
+          setOptionA('');
+          setOptionB('');
+          onCreated();
+        } catch (err) {
+          setError(err.message || '게임 생성 중 오류가 발생했습니다.');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <Card className="p-6 md:p-8 mb-10">
+          <h2 className="text-xl font-bold text-white mb-5 flex items-center gap-2">
+            <span className="text-2xl">&#128171;</span> 새 게임 만들기
+          </h2>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="어떤 밸런스 게임을 만들까요?"
+              disabled={loading}
+            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="relative">
+                <div className="absolute -top-1 left-3 bg-indigo-600 text-white text-xs font-bold px-2 py-0.5 rounded-full z-10">A</div>
+                <Input
+                  value={optionA}
+                  onChange={(e) => setOptionA(e.target.value)}
+                  placeholder="선택지 A"
+                  disabled={loading}
+                  className="pt-1"
+                />
+              </div>
+              <div className="relative">
+                <div className="absolute -top-1 left-3 bg-rose-600 text-white text-xs font-bold px-2 py-0.5 rounded-full z-10">B</div>
+                <Input
+                  value={optionB}
+                  onChange={(e) => setOptionB(e.target.value)}
+                  placeholder="선택지 B"
+                  disabled={loading}
+                  className="pt-1"
+                />
+              </div>
+            </div>
+            {error && <p className="text-red-400 text-sm">{error}</p>}
+            <Button type="submit" disabled={loading} className="w-full" size="lg">
+              {loading ? '생성 중...' : '게임 만들기'}
+            </Button>
+          </form>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // Game Card Component
+    // ========================================
+    function GameCard({ game, onVote, onDelete }) {
+      const [isDeleting, setIsDeleting] = useState(false);
+      const [showDeleteModal, setShowDeleteModal] = useState(false);
+      const [animating, setAnimating] = useState(null);
+
+      const totalVotes = (game.option_a_count || 0) + (game.option_b_count || 0);
+      const percentA = totalVotes > 0 ? Math.round((game.option_a_count || 0) / totalVotes * 100) : 50;
+      const percentB = 100 - percentA;
+
+      const handleVote = (option) => {
+        setAnimating(option);
+        setTimeout(() => setAnimating(null), 300);
+        onVote(game.id, option);
+      };
+
+      const handleDelete = async () => {
+        setIsDeleting(true);
+        try {
+          await onDelete(game.id);
+        } finally {
+          setIsDeleting(false);
+          setShowDeleteModal(false);
+        }
+      };
+
+      return (
+        <Card className="p-0 overflow-hidden animate-slide-in">
+          {/* Title Bar */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/50">
+            <h3 className="text-lg md:text-xl font-bold text-white flex-1 pr-3">{game.title}</h3>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="text-slate-500 hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-red-500/10"
+              aria-label="게임 삭제"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+
+          {/* VS Battle Area */}
+          <div className="p-4 md:p-6">
+            <div className="flex flex-col md:flex-row items-stretch gap-3 md:gap-0">
+              {/* Option A */}
+              <button
+                onClick={() => handleVote('a')}
+                className={`option-card cursor-pointer ${animating === 'a' ? 'animate-pop' : ''} flex-1 relative rounded-2xl md:rounded-r-none p-5 md:p-6 text-center transition-all duration-200 bg-gradient-to-br from-indigo-900/60 to-indigo-800/40 hover:from-indigo-800/70 hover:to-indigo-700/50`}
+              >
+                <div className="text-indigo-300 text-xs font-bold mb-2 tracking-wider">A</div>
+                <div className="text-white font-bold text-base md:text-lg mb-3 leading-snug">{game.option_a}</div>
+                <div className="text-3xl md:text-4xl font-black text-indigo-300">{percentA}%</div>
+                <div className="text-indigo-400/60 text-xs mt-1">{game.option_a_count || 0}표</div>
+              </button>
+
+              {/* VS Divider */}
+              <div className="flex items-center justify-center md:w-16 py-1 md:py-0 z-10">
+                <div className="animate-pulse-vs bg-gradient-to-br from-yellow-400 via-red-500 to-pink-500 text-white font-black text-xl md:text-2xl w-12 h-12 rounded-full flex items-center justify-center shadow-lg shadow-red-500/30 border-2 border-red-400/30">
+                  VS
+                </div>
+              </div>
+
+              {/* Option B */}
+              <button
+                onClick={() => handleVote('b')}
+                className={`option-card cursor-pointer ${animating === 'b' ? 'animate-pop' : ''} flex-1 relative rounded-2xl md:rounded-l-none p-5 md:p-6 text-center transition-all duration-200 bg-gradient-to-br from-rose-900/60 to-rose-800/40 hover:from-rose-800/70 hover:to-rose-700/50`}
+              >
+                <div className="text-rose-300 text-xs font-bold mb-2 tracking-wider">B</div>
+                <div className="text-white font-bold text-base md:text-lg mb-3 leading-snug">{game.option_b}</div>
+                <div className="text-3xl md:text-4xl font-black text-rose-300">{percentB}%</div>
+                <div className="text-rose-400/60 text-xs mt-1">{game.option_b_count || 0}표</div>
+              </button>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="mt-5 rounded-full overflow-hidden h-3 bg-slate-700/50 flex">
+              <div
+                className="progress-bar-inner bg-gradient-to-r from-indigo-500 to-indigo-400 h-full"
+                style={{ width: `${percentA}%` }}
+              />
+              <div
+                className="progress-bar-inner bg-gradient-to-r from-rose-400 to-rose-500 h-full"
+                style={{ width: `${percentB}%` }}
+              />
+            </div>
+
+            {/* Total Votes */}
+            <div className="text-center mt-3 text-slate-400 text-sm">
+              총 <span className="text-white font-bold">{totalVotes}</span>명 참여
+            </div>
+          </div>
+
+          {/* Delete Confirm Modal */}
+          <Modal
+            isOpen={showDeleteModal}
+            onClose={() => setShowDeleteModal(false)}
+            title="게임 삭제"
+          >
+            <p className="text-slate-300 mb-6">"{game.title}" 게임을 삭제하시겠습니까?</p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="secondary" size="sm" onClick={() => setShowDeleteModal(false)}>
+                취소
+              </Button>
+              <Button variant="danger" size="sm" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? '삭제 중...' : '삭제'}
+              </Button>
+            </div>
+          </Modal>
+        </Card>
+      );
+    }
+
+    // ========================================
+    // Empty State Component
+    // ========================================
+    function EmptyState() {
+      return (
+        <div className="text-center py-16 px-6">
+          <div className="text-6xl mb-4 opacity-50">&#9878;</div>
+          <h3 className="text-xl font-bold text-slate-400 mb-2">아직 게임이 없습니다</h3>
+          <p className="text-slate-500">위 폼에서 첫 번째 밸런스 게임을 만들어보세요!</p>
+        </div>
+      );
+    }
+
+    // ========================================
+    // App Component
+    // ========================================
+    function App() {
+      const [games, setGames] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState('');
+
+      const fetchGames = useCallback(async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/games`);
+          const json = await res.json();
+          if (!json.success) throw new Error('데이터 로드 실패');
+          const items = json.data;
+          setGames(items);
+          setError('');
+        } catch (err) {
+          setError('게임 목록을 불러올 수 없습니다.');
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      useEffect(() => {
+        fetchGames();
+      }, [fetchGames]);
+
+      const handleVote = useCallback(async (gameId, option) => {
+        // Optimistic update
+        setGames((prev) =>
+          prev.map((g) => {
+            if (g.id !== gameId) return g;
+            return {
+              ...g,
+              option_a_count: option === 'a' ? (g.option_a_count || 0) + 1 : (g.option_a_count || 0),
+              option_b_count: option === 'b' ? (g.option_b_count || 0) + 1 : (g.option_b_count || 0),
+            };
+          })
+        );
+
+        try {
+          const res = await fetch(`${API_BASE_URL}/games/${gameId}/vote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ option }),
+          });
+          const json = await res.json();
+          if (json.success && json.data) {
+            setGames((prev) =>
+              prev.map((g) => (g.id === gameId ? { ...g, ...json.data } : g))
+            );
+          }
+        } catch {
+          // Revert on failure
+          fetchGames();
+        }
+      }, [fetchGames]);
+
+      const handleDelete = useCallback(async (gameId) => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/games/${gameId}`, { method: 'DELETE' });
+          const json = await res.json();
+          if (!json.success) throw new Error();
+          setGames((prev) => prev.filter((g) => g.id !== gameId));
+        } catch {
+          setError('삭제 중 오류가 발생했습니다.');
+        }
+      }, []);
+
+      return (
+        <div className="max-w-3xl mx-auto px-4 pb-16">
+          <Header />
+          <GameCreateForm onCreated={fetchGames} />
+
+          <div className="flex items-center gap-3 mb-6">
+            <h2 className="text-xl font-bold text-white">
+              <span className="mr-2">&#127918;</span>게임 목록
+            </h2>
+            {games.length > 0 && (
+              <span className="bg-slate-700 text-slate-300 text-sm font-bold px-2.5 py-0.5 rounded-full">
+                {games.length}
+              </span>
+            )}
+          </div>
+
+          {loading && (
+            <div className="text-center py-16">
+              <div className="inline-block w-8 h-8 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+              <p className="text-slate-400 mt-4">게임 불러오는 중...</p>
+            </div>
+          )}
+
+          {error && !loading && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6 text-center">
+              <p className="text-red-400">{error}</p>
+              <Button variant="ghost" size="sm" onClick={fetchGames} className="mt-2">
+                다시 시도
+              </Button>
+            </div>
+          )}
+
+          {!loading && !error && games.length === 0 && <EmptyState />}
+
+          <div className="space-y-6">
+            {games.map((game) => (
+              <GameCard
+                key={game.id}
+                game={game}
+                onVote={handleVote}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
