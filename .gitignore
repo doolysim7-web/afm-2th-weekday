@@ -1,3 +1,22 @@
 .env
+.env.*
 .DS_Store
 node_modules
+
+# MCP & Claude local config
+.mcp.json
+.claude/agents/
+.claude/skills/
+.claude/.DS_Store
+
+# Local data / temp files
+week-4/my-data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Scratch / unsorted
+Untitled-*
+*.log
