@@ -5,10 +5,15 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- API Key ---
-const GEMINI_API_KEY = (
-  process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE'
-).trim();
+// --- API Key (환경변수에서만 읽음) ---
+const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
+if (!GEMINI_API_KEY) {
+  console.warn(
+    '[WARN] GEMINI_API_KEY 환경변수가 설정되지 않았습니다.\n' +
+    '       AI 레시피 생성 API(/api/recipes/generate)가 동작하지 않습니다.\n' +
+    '       사용법: GEMINI_API_KEY=your_key node server.js  또는  .env 파일 사용'
+  );
+}
 
 // --- DB 설정 ---
 const DATABASE_URL = (
@@ -190,6 +195,14 @@ app.delete('/api/recipes/:id', async (req, res) => {
 
 app.post('/api/recipes/generate', async (_req, res) => {
   try {
+    // 0. API 키 존재 확인
+    if (!GEMINI_API_KEY) {
+      return res.status(503).json({
+        success: false,
+        message: 'GEMINI_API_KEY 환경변수가 설정되지 않았습니다. 서버 관리자에게 문의하세요.',
+      });
+    }
+
     // 1. DB에서 현재 등록된 재료 목록 조회
     const ingredientResult = await pool.query(
       'SELECT name, quantity, category FROM ingredients ORDER BY created_at DESC'
