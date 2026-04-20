@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💬 커뮤니티</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      min-height: 100vh;
+      color: #2d3748;
+    }
+    .app { max-width: 820px; margin: 0 auto; padding: 20px; }
+    header {
+      background: white;
+      border-radius: 12px;
+      padding: 16px 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    header h1 { font-size: 1.35rem; cursor: pointer; }
+    header .user-area {
+      display: flex; gap: 10px; align-items: center;
+      font-size: 0.9rem;
+    }
+    .nickname { font-weight: 600; color: #e53e3e; }
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #e53e3e; color: white; }
+    .btn-primary:hover { background: #c53030; }
+    .btn-primary:disabled { background: #cbd5e0; cursor: not-allowed; }
+    .btn-ghost { background: #edf2f7; color: #4a5568; }
+    .btn-ghost:hover { background: #e2e8f0; }
+    .btn-danger { background: #fed7d7; color: #c53030; }
+    .btn-danger:hover { background: #feb2b2; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+    }
+    h2 {
+      font-size: 1.15rem;
+      margin-bottom: 16px;
+      color: #2d3748;
+      border-bottom: 2px solid #f7fafc;
+      padding-bottom: 10px;
+    }
+    form { display: grid; gap: 12px; }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+      font-weight: 600;
+      color: #4a5568;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #e53e3e;
+      box-shadow: 0 0 0 3px rgba(229,62,62,0.15);
+    }
+    textarea { resize: vertical; min-height: 180px; }
+    .auth-switch {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #edf2f7;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #718096;
+    }
+    .btn-link {
+      background: none;
+      border: none;
+      color: #e53e3e;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      padding: 4px 6px;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .btn-link:hover { color: #c53030; }
+    .msg {
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+    }
+    .msg-error { background: #fed7d7; color: #742a2a; }
+    .msg-success { background: #c6f6d5; color: #22543d; }
+    .post-list { list-style: none; }
+    .post-item {
+      padding: 16px;
+      border-bottom: 1px solid #edf2f7;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .post-item:hover { background: #fff5f5; }
+    .post-item:last-child { border-bottom: none; }
+    .post-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 6px;
+    }
+    .post-meta {
+      font-size: 0.82rem;
+      color: #718096;
+      display: flex;
+      gap: 12px;
+    }
+    .post-author { font-weight: 600; color: #e53e3e; }
+    .empty {
+      text-align: center;
+      color: #a0aec0;
+      padding: 40px 20px;
+    }
+    .post-detail .title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .post-detail .meta {
+      color: #718096;
+      font-size: 0.88rem;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid #edf2f7;
+    }
+    .post-detail .content {
+      font-size: 1rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .action-row {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 24px;
+      padding-top: 16px;
+      border-top: 1px solid #edf2f7;
+    }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 640px) {
+      .app { padding: 12px; }
+      header { padding: 12px 16px; }
+      header h1 { font-size: 1.1rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1 id="homeBtn">💬 커뮤니티</h1>
+      <div class="user-area" id="userArea">
+        <!-- JS가 로그인 상태에 따라 렌더링 -->
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- 뷰가 동적으로 여기 렌더링됨 -->
+    </main>
+  </div>
+
+  <!-- Template: 로그인 (기본) -->
+  <template id="tpl-login">
+    <div class="card">
+      <h2 style="text-align:center; border:none;">🔐 로그인</h2>
+      <div id="authMsg"></div>
+      <form id="loginForm">
+        <div>
+          <label>이메일</label>
+          <input type="email" name="email" required autocomplete="email" />
+        </div>
+        <div>
+          <label>비밀번호</label>
+          <input type="password" name="password" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">로그인</button>
+      </form>
+      <div class="auth-switch">
+        아직 계정이 없으신가요?
+        <button type="button" class="btn-link" id="goRegister">회원가입</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: 회원가입 -->
+  <template id="tpl-register">
+    <div class="card">
+      <h2 style="text-align:center; border:none;">✨ 회원가입</h2>
+      <div id="authMsg"></div>
+      <form id="registerForm">
+        <div>
+          <label>이메일</label>
+          <input type="email" name="email" required autocomplete="email" />
+        </div>
+        <div>
+          <label>닉네임</label>
+          <input type="text" name="nickname" required maxlength="30" placeholder="다른 사용자에게 보여질 이름" />
+        </div>
+        <div>
+          <label>비밀번호 <span style="color:#a0aec0; font-weight:400;">(6자 이상)</span></label>
+          <input type="password" name="password" required minlength="6" autocomplete="new-password" />
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">가입하기</button>
+      </form>
+      <div class="auth-switch">
+        이미 계정이 있으신가요?
+        <button type="button" class="btn-link" id="goLogin">로그인</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: 게시글 목록 -->
+  <template id="tpl-list">
+    <div class="card">
+      <div class="toolbar">
+        <h2 style="border:none;padding:0;margin:0;">📝 전체 게시글</h2>
+        <button type="button" class="btn btn-primary" id="writeBtn">＋ 새 글 작성</button>
+      </div>
+      <ul class="post-list" id="postList"></ul>
+    </div>
+  </template>
+
+  <!-- Template: 게시글 상세 -->
+  <template id="tpl-detail">
+    <div class="card post-detail">
+      <div id="detailBody"></div>
+    </div>
+  </template>
+
+  <!-- Template: 글쓰기/수정 -->
+  <template id="tpl-form">
+    <div class="card">
+      <h2 id="formTitle">✏️ 새 글 작성</h2>
+      <div id="formMsg"></div>
+      <form id="postForm">
+        <div>
+          <label>제목</label>
+          <input type="text" name="title" required maxlength="200" />
+        </div>
+        <div>
+          <label>내용</label>
+          <textarea name="content" required></textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" class="btn btn-ghost" id="cancelBtn">취소</button>
+          <button type="submit" class="btn btn-primary" id="submitBtn">등록</button>
+        </div>
+      </form>
+    </div>
+  </template>
+
+  <script src="client.js"></script>
+</body>
+</html>
