@@ -1,0 +1,18 @@
+{
+  "name": "personal-ai-trainer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Context 파일 + DB 운동 기록을 결합해 맞춤형 루틴을 제안하는 AI 트레이너",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.20.0"
+  }
+}

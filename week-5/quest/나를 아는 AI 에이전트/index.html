@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🏋️ 나를 아는 AI 트레이너</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #2d3748;
+    }
+    .app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+    header {
+      background: white;
+      border-radius: 14px;
+      padding: 18px 24px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    header h1 { font-size: 1.3rem; letter-spacing: -0.5px; }
+    header .tagline { color: #718096; font-size: 0.88rem; margin-top: 2px; }
+
+    .tabs { display: flex; gap: 4px; background: #edf2f7; padding: 4px; border-radius: 10px; }
+    .tab-btn {
+      padding: 8px 14px; border: none; background: transparent; border-radius: 8px;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer; color: #4a5568;
+      transition: all 0.15s;
+    }
+    .tab-btn.active { background: white; color: #667eea; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .tab-btn:hover:not(.active) { color: #2d3748; }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+      margin-bottom: 18px;
+    }
+    h2 { font-size: 1.05rem; margin-bottom: 12px; }
+    .muted { color: #718096; font-size: 0.88rem; }
+
+    /* ---- Buttons ---- */
+    .btn {
+      padding: 9px 16px; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 0.9rem; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #667eea; color: white; }
+    .btn-primary:hover { background: #5a67d8; }
+    .btn-primary:disabled { background: #cbd5e0; cursor: not-allowed; }
+    .btn-ghost { background: #edf2f7; color: #4a5568; }
+    .btn-ghost:hover { background: #e2e8f0; }
+    .btn-danger { background: #fed7d7; color: #c53030; padding: 4px 10px; font-size: 0.8rem; }
+    .btn-danger:hover { background: #feb2b2; }
+
+    /* ---- Forms ---- */
+    label { display:block; font-size:0.82rem; font-weight:600; color:#4a5568; margin-bottom:4px; }
+    input, select, textarea {
+      width: 100%; padding: 9px 11px;
+      border: 1px solid #cbd5e0; border-radius: 8px;
+      font-size: 0.92rem; font-family: inherit;
+    }
+    textarea { resize: vertical; }
+    input:focus, select:focus, textarea:focus {
+      outline: none; border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102,126,234,0.18);
+    }
+
+    /* ---- Context tab ---- */
+    .context-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .context-pane .preview {
+      background: #f7fafc;
+      border: 1px solid #edf2f7;
+      border-radius: 10px;
+      padding: 16px;
+      font-size: 0.88rem;
+      line-height: 1.55;
+      max-height: 520px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .context-pane textarea { min-height: 520px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 0.82rem; }
+    .toolbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; flex-wrap:wrap; }
+
+    /* ---- Workout tab ---- */
+    .workout-form {
+      display: grid;
+      grid-template-columns: repeat(8, 1fr);
+      gap: 10px;
+      align-items: end;
+    }
+    .workout-form .w-date    { grid-column: span 2; }
+    .workout-form .w-body    { grid-column: span 1; }
+    .workout-form .w-ex      { grid-column: span 2; }
+    .workout-form .w-sets    { grid-column: span 1; }
+    .workout-form .w-reps    { grid-column: span 1; }
+    .workout-form .w-submit  { grid-column: span 1; }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 0.85rem; }
+    th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #edf2f7; }
+    th { background: #f7fafc; font-weight: 700; color: #4a5568; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr:hover td { background: #fafbfc; }
+    .tag {
+      display: inline-block; padding: 2px 8px;
+      background: #edf2f7; color: #4a5568; border-radius: 999px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+
+    /* ---- Chat tab ---- */
+    .chat-input-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-bottom: 14px; }
+    .chat-input-row textarea { min-height: 64px; }
+
+    .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .panel {
+      border-radius: 12px;
+      padding: 16px;
+      min-height: 200px;
+      border: 2px solid transparent;
+      display: flex; flex-direction: column;
+    }
+    .panel.without { background: #fff5f5; border-color: #fed7d7; }
+    .panel.with    { background: #f0fff4; border-color: #c6f6d5; }
+    .panel-title {
+      font-weight: 800; font-size: 0.95rem; margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .panel.without .panel-title { color: #c53030; }
+    .panel.with    .panel-title { color: #2f855a; }
+
+    .panel-meta {
+      font-size: 0.72rem; color: #718096;
+      margin-bottom: 10px; background: rgba(255,255,255,0.5);
+      padding: 4px 8px; border-radius: 6px;
+      display: inline-block;
+    }
+    .answer {
+      background: white; border-radius: 10px;
+      padding: 14px; font-size: 0.9rem; line-height: 1.6;
+      white-space: pre-wrap; word-break: break-word;
+      flex: 1;
+      min-height: 140px;
+    }
+    .prompt-toggle {
+      margin-top: 10px; font-size: 0.78rem;
+      background: none; border: none;
+      color: #718096; text-decoration: underline;
+      cursor: pointer; padding: 0; text-align: left;
+    }
+    .prompt-view {
+      margin-top: 8px;
+      background: #1a202c; color: #cbd5e0;
+      border-radius: 8px; padding: 10px 12px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 0.74rem; line-height: 1.5;
+      max-height: 260px; overflow-y: auto;
+      white-space: pre-wrap; word-break: break-word;
+      display: none;
+    }
+    .prompt-view.show { display: block; }
+
+    .loading-dots::after {
+      content: '⋯'; animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+
+    .sample-q {
+      display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+    }
+    .sample-q button {
+      padding: 6px 12px; border: 1px solid #cbd5e0;
+      background: white; border-radius: 999px;
+      font-size: 0.82rem; color: #4a5568; cursor: pointer;
+    }
+    .sample-q button:hover { background: #edf2f7; border-color: #a0aec0; }
+
+    .hidden { display: none !important; }
+
+    .msg {
+      padding: 10px 12px; border-radius: 8px;
+      font-size: 0.88rem; margin: 8px 0;
+    }
+    .msg-error { background: #fed7d7; color: #742a2a; }
+    .msg-success { background: #c6f6d5; color: #22543d; }
+
+    @media (max-width: 820px) {
+      .context-grid { grid-template-columns: 1fr; }
+      .panels { grid-template-columns: 1fr; }
+      .workout-form { grid-template-columns: repeat(4, 1fr); }
+      .workout-form > * { grid-column: span 2 !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>🏋️ 나를 아는 AI 트레이너</h1>
+        <div class="tagline">Context(개인 프로파일) + DB(운동 기록)을 결합한 맞춤형 코칭</div>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="chat">💬 AI 트레이너</button>
+        <button class="tab-btn" data-tab="context">📝 Context</button>
+        <button class="tab-btn" data-tab="workouts">💪 운동 기록</button>
+      </div>
+    </header>
+
+    <!-- TAB: CHAT -->
+    <section id="tab-chat" class="tab-panel">
+      <div class="card">
+        <h2>AI 트레이너에게 물어보기</h2>
+        <p class="muted">같은 질문을 <b>Context 없이</b> 한 번, <b>Context 있이</b> 한 번 — 총 두 번 답하게 해 차이를 비교합니다.</p>
+
+        <div class="chat-input-row" style="margin-top:14px;">
+          <textarea id="questionInput" placeholder="예: 오늘 할 운동 루틴을 짜줘 / 왼쪽 무릎 안 아프게 하체 운동 뭐 할까?"></textarea>
+          <button class="btn btn-primary" id="askBtn">비교 질문 🚀</button>
+        </div>
+
+        <div class="sample-q">
+          <button data-q="오늘 할 운동 루틴을 짜줘">오늘 할 운동 루틴을 짜줘</button>
+          <button data-q="이번 주 하체 볼륨이 충분했어? 내일 뭐 해야해?">이번 주 하체 볼륨 충분했어?</button>
+          <button data-q="라운드숄더 교정용 30분 홈트 알려줘">라운드숄더 교정 홈트</button>
+          <button data-q="주말에 5km 러닝 전에 워밍업 루틴 뭐가 좋을까?">러닝 전 워밍업</button>
+        </div>
+
+        <div id="chatMsg"></div>
+      </div>
+
+      <div class="panels" id="panels" style="display:none;">
+        <div class="panel without">
+          <div class="panel-title">❌ Context 없이
+            <span class="panel-meta" id="metaWithout"></span>
+          </div>
+          <div class="answer" id="answerWithout"></div>
+          <button class="prompt-toggle" data-target="promptWithout">▸ 실제 전달된 프롬프트 보기</button>
+          <pre class="prompt-view" id="promptWithout"></pre>
+        </div>
+        <div class="panel with">
+          <div class="panel-title">✅ Context 있이
+            <span class="panel-meta" id="metaWith"></span>
+          </div>
+          <div class="answer" id="answerWith"></div>
+          <button class="prompt-toggle" data-target="promptWith">▸ 실제 전달된 프롬프트 보기</button>
+          <pre class="prompt-view" id="promptWith"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: CONTEXT -->
+    <section id="tab-context" class="tab-panel hidden">
+      <div class="card">
+        <div class="toolbar">
+          <h2 style="margin:0;">📝 Context (나의 프로파일)</h2>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-ghost" id="reloadContextBtn">↻ 다시 불러오기</button>
+            <button class="btn btn-primary" id="saveContextBtn">💾 저장</button>
+          </div>
+        </div>
+        <p class="muted">왼쪽은 실제 보존된 context.md 프리뷰, 오른쪽은 편집 영역입니다. 저장 시 서버의 파일에 반영되고 다음 AI 호출부터 적용됩니다.</p>
+        <div id="contextMsg"></div>
+        <div class="context-grid" style="margin-top: 14px;">
+          <div class="context-pane">
+            <label>프리뷰</label>
+            <div id="contextPreview" class="preview">(로딩 중...)</div>
+          </div>
+          <div class="context-pane">
+            <label>편집 (Markdown)</label>
+            <textarea id="contextEditor" spellcheck="false"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB: WORKOUTS -->
+    <section id="tab-workouts" class="tab-panel hidden">
+      <div class="card">
+        <h2>💪 운동 기록 추가</h2>
+        <div id="workoutMsg"></div>
+        <form id="workoutForm" class="workout-form" style="margin-top:10px;">
+          <div class="w-date"><label>날짜</label><input type="date" name="date" required></div>
+          <div class="w-body">
+            <label>부위</label>
+            <select name="body_part" required>
+              <option value="상체">상체</option>
+              <option value="하체">하체</option>
+              <option value="코어">코어</option>
+              <option value="전신">전신</option>
+              <option value="유산소">유산소</option>
+            </select>
+          </div>
+          <div class="w-ex"><label>운동명</label><input type="text" name="exercise" required placeholder="예: 스쿼트"></div>
+          <div class="w-sets"><label>세트</label><input type="number" name="sets" required min="1" value="3"></div>
+          <div class="w-reps"><label>횟수</label><input type="number" name="reps" required min="1" value="10"></div>
+          <div><label>무게(kg)</label><input type="number" name="weight_kg" step="0.5" placeholder="선택"></div>
+          <div><label>시간(분)</label><input type="number" name="duration_min" step="0.5" placeholder="선택"></div>
+          <div class="w-submit"><button type="submit" class="btn btn-primary" style="width:100%;">추가</button></div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>최근 기록</h2>
+        <div id="workoutList"></div>
+      </div>
+    </section>
+  </div>
+
+  <script src="client.js"></script>
+</body>
+</html>
