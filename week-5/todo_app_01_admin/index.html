@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Todo Admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            border: 'hsl(214.3 31.8% 91.4%)',
+            input: 'hsl(214.3 31.8% 91.4%)',
+            ring: 'hsl(222.2 84% 4.9%)',
+            background: 'hsl(0 0% 100%)',
+            foreground: 'hsl(222.2 84% 4.9%)',
+            primary: { DEFAULT: 'hsl(222.2 47.4% 11.2%)', foreground: 'hsl(210 40% 98%)' },
+            secondary: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(222.2 47.4% 11.2%)' },
+            destructive: { DEFAULT: 'hsl(0 84.2% 60.2%)', foreground: 'hsl(210 40% 98%)' },
+            muted: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(215.4 16.3% 46.9%)' },
+            accent: { DEFAULT: 'hsl(210 40% 96.1%)', foreground: 'hsl(222.2 47.4% 11.2%)' },
+            card: { DEFAULT: 'hsl(0 0% 100%)', foreground: 'hsl(222.2 84% 4.9%)' },
+          },
+          borderRadius: { lg: '0.5rem', md: 'calc(0.5rem - 2px)', sm: 'calc(0.5rem - 4px)' },
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', -apple-system, sans-serif; }
+    .fade-in { animation: fadeIn 0.15s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: hsl(215.4 16.3% 80%); border-radius: 3px; }
+  </style>
+</head>
+<body class="bg-background min-h-screen text-foreground">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } = React;
+
+    // ========================================
+    // API Configuration
+    // ========================================
+    const API_BASE_URL = '/api';
+
+    // ========================================
+    // Auth Context
+    // ========================================
+    const AuthContext = createContext(null);
+    function useAuth() { return useContext(AuthContext); }
+
+    function authHeaders(token) {
+      return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+    }
+
+    // ========================================
+    // Icons (Lucide-style SVG components)
+    // ========================================
+    function Icon({ children, size = 16, className = '' }) {
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+             strokeLinejoin="round" className={className}>
+          {children}
+        </svg>
+      );
+    }
+
+    function IconUsers(p) { return <Icon {...p}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></Icon>; }
+    function IconCheckSquare(p) { return <Icon {...p}><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></Icon>; }
+    function IconBarChart(p) { return <Icon {...p}><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></Icon>; }
+    function IconLogOut(p) { return <Icon {...p}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></Icon>; }
+    function IconTrash(p) { return <Icon {...p}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></Icon>; }
+    function IconSearch(p) { return <Icon {...p}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></Icon>; }
+    function IconShield(p) { return <Icon {...p}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></Icon>; }
+    function IconHome(p) { return <Icon {...p}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></Icon>; }
+    function IconChevronDown(p) { return <Icon {...p}><polyline points="6 9 12 15 18 9"/></Icon>; }
+    function IconAlertCircle(p) { return <Icon {...p}><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></Icon>; }
+    function IconCheck(p) { return <Icon {...p}><polyline points="20 6 9 17 4 12"/></Icon>; }
+    function IconX(p) { return <Icon {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Icon>; }
+    function IconRefresh(p) { return <Icon {...p}><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></Icon>; }
+    function IconLoader(p) { return <Icon {...p} className={`animate-spin ${p.className || ''}`}><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></Icon>; }
+    function IconCircle(p) { return <Icon {...p}><circle cx="12" cy="12" r="10"/></Icon>; }
+    function IconCheckCircle(p) { return <Icon {...p}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></Icon>; }
+
+    // ========================================
+    // Design System Components (shadcn-style)
+    // ========================================
+    function Button({ children, variant = 'default', size = 'default', className = '', disabled, ...props }) {
+      const base = 'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50';
+      const variants = {
+        default: 'bg-primary text-primary-foreground shadow hover:bg-primary/90',
+        destructive: 'bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90',
+        outline: 'border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground',
+        secondary: 'bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80',
+        ghost: 'hover:bg-accent hover:text-accent-foreground',
+        link: 'text-primary underline-offset-4 hover:underline',
+      };
+      const sizes = {
+        default: 'h-9 px-4 py-2',
+        sm: 'h-8 rounded-md px-3 text-xs',
+        lg: 'h-10 rounded-md px-8',
+        icon: 'h-9 w-9',
+      };
+      return (
+        <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} disabled={disabled} {...props}>
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ className = '', ...props }) {
+      return (
+        <input
+          className={`flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
+          {...props}
+        />
+      );
+    }
+
+    function Badge({ children, variant = 'default', className = '' }) {
+      const variants = {
+        default: 'bg-primary text-primary-foreground shadow',
+        secondary: 'bg-secondary text-secondary-foreground',
+        destructive: 'bg-destructive text-destructive-foreground shadow',
+        outline: 'border border-input text-foreground',
+      };
+      return (
+        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${variants[variant]} ${className}`}>
+          {children}
+        </span>
+      );
+    }
+
+    function Card({ children, className = '' }) {
+      return (
+        <div className={`rounded-lg border border-border bg-card text-card-foreground shadow-sm ${className}`}>
+          {children}
+        </div>
+      );
+    }
+
+    function CardHeader({ children, className = '' }) {
+      return <div className={`flex flex-col space-y-1.5 p-6 ${className}`}>{children}</div>;
+    }
+
+    function CardTitle({ children, className = '' }) {
+      return <h3 className={`font-semibold leading-none tracking-tight ${className}`}>{children}</h3>;
+    }
+
+    function CardDescription({ children, className = '' }) {
+      return <p className={`text-sm text-muted-foreground ${className}`}>{children}</p>;
+    }
+
+    function CardContent({ children, className = '' }) {
+      return <div className={`p-6 pt-0 ${className}`}>{children}</div>;
+    }
+
+    function Separator({ className = '' }) {
+      return <div className={`shrink-0 bg-border h-[1px] w-full ${className}`} />;
+    }
+
+    function Table({ children, className = '' }) {
+      return (
+        <div className="relative w-full overflow-auto">
+          <table className={`w-full caption-bottom text-sm ${className}`}>{children}</table>
+        </div>
+      );
+    }
+
+    function TableHeader({ children }) { return <thead className="[&_tr]:border-b">{children}</thead>; }
+    function TableBody({ children }) { return <tbody className="[&_tr:last-child]:border-0">{children}</tbody>; }
+    function TableRow({ children, className = '' }) {
+      return <tr className={`border-b border-border transition-colors hover:bg-muted/50 ${className}`}>{children}</tr>;
+    }
+    function TableHead({ children, className = '' }) {
+      return <th className={`h-10 px-4 text-left align-middle font-medium text-muted-foreground [&:has([role=checkbox])]:pr-0 ${className}`}>{children}</th>;
+    }
+    function TableCell({ children, className = '' }) {
+      return <td className={`p-4 align-middle [&:has([role=checkbox])]:pr-0 ${className}`}>{children}</td>;
+    }
+
+    function Dialog({ open, onClose, children }) {
+      if (!open) return null;
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/80" onClick={onClose} />
+          <div className="fade-in relative z-50 w-full max-w-lg mx-4 rounded-lg border border-border bg-background p-6 shadow-lg">
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    function DialogHeader({ children }) {
+      return <div className="flex flex-col space-y-1.5 text-center sm:text-left mb-4">{children}</div>;
+    }
+
+    function DialogTitle({ children }) {
+      return <h2 className="text-lg font-semibold leading-none tracking-tight">{children}</h2>;
+    }
+
+    function DialogDescription({ children }) {
+      return <p className="text-sm text-muted-foreground">{children}</p>;
+    }
+
+    function Skeleton({ className = '' }) {
+      return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
+    }
+
+    function EmptyState({ icon: IconComp, title, description }) {
+      return (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="rounded-full bg-muted p-3 mb-4">
+            <IconComp size={24} className="text-muted-foreground" />
+          </div>
+          <h3 className="text-sm font-medium text-foreground mb-1">{title}</h3>
+          <p className="text-sm text-muted-foreground">{description}</p>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Login Page
+    // ========================================
+    function LoginPage() {
+      const { login } = useAuth();
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+        try {
+          const res = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          const json = await res.json();
+          if (!json.success) { setError(json.message); return; }
+          if (json.data.user.role !== 'admin') {
+            setError('관리자 권한이 필요합니다');
+            return;
+          }
+          login(json.data.token, json.data.user);
+        } catch {
+          setError('서버에 연결할 수 없습니다');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+          <Card className="w-full max-w-sm">
+            <CardHeader className="text-center">
+              <div className="mx-auto mb-2 rounded-full bg-primary/10 p-3">
+                <IconShield size={24} className="text-primary" />
+              </div>
+              <CardTitle className="text-xl">관리자 로그인</CardTitle>
+              <CardDescription>관리자 계정으로 로그인하세요</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {error && (
+                <div className="flex items-center gap-2 mb-4 px-3 py-2.5 bg-destructive/10 border border-destructive/20 rounded-md text-sm text-destructive">
+                  <IconAlertCircle size={14} />
+                  <span>{error}</span>
+                </div>
+              )}
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none">이메일</label>
+                  <Input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                         placeholder="admin@example.com" required />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium leading-none">비밀번호</label>
+                  <Input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                         placeholder="비밀번호 입력" required />
+                </div>
+                <Button type="submit" disabled={loading} className="w-full">
+                  {loading ? <><IconLoader size={14} className="mr-2" /> 로그인 중...</> : '로그인'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Router (Hash-based)
+    // ========================================
+    const RouterContext = createContext({ path: '/', navigate: () => {} });
+    function useRouter() { return useContext(RouterContext); }
+
+    function Router({ children }) {
+      const [path, setPath] = useState(window.location.hash.slice(1) || '/');
+
+      useEffect(() => {
+        const handler = () => setPath(window.location.hash.slice(1) || '/');
+        window.addEventListener('hashchange', handler);
+        return () => window.removeEventListener('hashchange', handler);
+      }, []);
+
+      const navigate = useCallback((to) => { window.location.hash = to; }, []);
+
+      return (
+        <RouterContext.Provider value={{ path, navigate }}>
+          {children}
+        </RouterContext.Provider>
+      );
+    }
+
+    // ========================================
+    // Sidebar Navigation
+    // ========================================
+    function Sidebar() {
+      const { path, navigate } = useRouter();
+      const { user, logout } = useAuth();
+
+      const navItems = [
+        { path: '/', icon: IconHome, label: '대시보드' },
+        { path: '/users', icon: IconUsers, label: '유저 관리' },
+        { path: '/todos', icon: IconCheckSquare, label: '할 일 관리' },
+      ];
+
+      return (
+        <div className="flex flex-col h-full w-60 border-r border-border bg-background">
+          {/* Logo */}
+          <div className="flex items-center gap-2 px-6 h-14 border-b border-border shrink-0">
+            <IconShield size={20} className="text-primary" />
+            <span className="font-semibold text-sm">Todo Admin</span>
+          </div>
+
+          {/* Nav */}
+          <nav className="flex-1 px-3 py-4 space-y-1">
+            {navItems.map(item => {
+              const active = path === item.path;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-secondary text-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <item.icon size={16} />
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* User */}
+          <div className="px-3 py-4 border-t border-border">
+            <div className="flex items-center gap-3 px-3 py-2">
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium shrink-0">
+                {user?.nickname?.charAt(0) || 'A'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user?.nickname}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              </div>
+              <button onClick={logout} className="text-muted-foreground hover:text-foreground transition-colors" title="로그아웃">
+                <IconLogOut size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Mobile Header
+    // ========================================
+    function MobileHeader() {
+      const { path, navigate } = useRouter();
+      const { user, logout } = useAuth();
+      const [open, setOpen] = useState(false);
+
+      const navItems = [
+        { path: '/', icon: IconHome, label: '대시보드' },
+        { path: '/users', icon: IconUsers, label: '유저 관리' },
+        { path: '/todos', icon: IconCheckSquare, label: '할 일 관리' },
+      ];
+
+      return (
+        <div className="md:hidden border-b border-border bg-background">
+          <div className="flex items-center justify-between px-4 h-14">
+            <div className="flex items-center gap-2">
+              <IconShield size={18} className="text-primary" />
+              <span className="font-semibold text-sm">Todo Admin</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setOpen(!open)} className="p-2 rounded-md hover:bg-muted">
+                {open ? <IconX size={18} /> : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+          {open && (
+            <div className="px-3 py-2 border-t border-border fade-in">
+              {navItems.map(item => {
+                const active = path === item.path;
+                return (
+                  <button
+                    key={item.path}
+                    onClick={() => { navigate(item.path); setOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                      active ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:bg-muted'
+                    }`}
+                  >
+                    <item.icon size={16} />
+                    {item.label}
+                  </button>
+                );
+              })}
+              <Separator className="my-2" />
+              <button
+                onClick={logout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <IconLogOut size={16} />
+                로그아웃
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Dashboard Page
+    // ========================================
+    function DashboardPage({ users, todos, loading, onRefresh }) {
+      const totalUsers = users.length;
+      const totalTodos = todos.length;
+      const completedTodos = todos.filter(t => t.done).length;
+      const activeTodos = totalTodos - completedTodos;
+      const completionRate = totalTodos > 0 ? Math.round((completedTodos / totalTodos) * 100) : 0;
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayUsers = users.filter(u => u.created_at && u.created_at.slice(0, 10) === todayStr).length;
+      const todayTodos = todos.filter(t => t.created_at && t.created_at.slice(0, 10) === todayStr).length;
+
+      // Recent activity (last 5 todos)
+      const recentTodos = todos.slice(0, 8);
+
+      // Top users by todo count
+      const userTodoMap = {};
+      todos.forEach(t => {
+        const key = t.user_nickname || t.user_email;
+        userTodoMap[key] = (userTodoMap[key] || 0) + 1;
+      });
+      const topUsers = Object.entries(userTodoMap)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+
+      if (loading) {
+        return (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1,2,3,4].map(i => (
+                <Card key={i}><CardContent className="p-6"><Skeleton className="h-4 w-20 mb-2" /><Skeleton className="h-8 w-16" /></CardContent></Card>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-6 fade-in">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">대시보드</h1>
+              <p className="text-sm text-muted-foreground mt-1">서비스 현황을 한눈에 확인하세요</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={onRefresh}>
+              <IconRefresh size={14} className="mr-2" /> 새로고침
+            </Button>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">전체 유저</p>
+                  <IconUsers size={16} className="text-muted-foreground" />
+                </div>
+                <p className="text-2xl font-bold mt-2">{totalUsers}</p>
+                {todayUsers > 0 && <p className="text-xs text-muted-foreground mt-1">오늘 +{todayUsers}명</p>}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">전체 할 일</p>
+                  <IconCheckSquare size={16} className="text-muted-foreground" />
+                </div>
+                <p className="text-2xl font-bold mt-2">{totalTodos}</p>
+                {todayTodos > 0 && <p className="text-xs text-muted-foreground mt-1">오늘 +{todayTodos}개</p>}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">진행 중</p>
+                  <IconCircle size={16} className="text-muted-foreground" />
+                </div>
+                <p className="text-2xl font-bold mt-2">{activeTodos}</p>
+                <p className="text-xs text-muted-foreground mt-1">미완료 항목</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">완료율</p>
+                  <IconBarChart size={16} className="text-muted-foreground" />
+                </div>
+                <p className="text-2xl font-bold mt-2">{completionRate}%</p>
+                <div className="mt-2 h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${completionRate}%` }} />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Two Column Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Recent Todos */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">최근 할 일</CardTitle>
+                <CardDescription>최근 등록된 할 일 목록</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {recentTodos.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">등록된 할 일이 없습니다</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentTodos.map(t => (
+                      <div key={t.id} className="flex items-start gap-3">
+                        <div className={`mt-0.5 shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                          t.done ? 'bg-primary border-primary' : 'border-muted-foreground/30'
+                        }`}>
+                          {t.done && <IconCheck size={10} className="text-primary-foreground" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm truncate ${t.done ? 'line-through text-muted-foreground' : ''}`}>{t.text}</p>
+                          <p className="text-xs text-muted-foreground">{t.user_nickname}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Top Users */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">활발한 유저</CardTitle>
+                <CardDescription>할 일을 가장 많이 등록한 유저</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {topUsers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">데이터가 없습니다</p>
+                ) : (
+                  <div className="space-y-3">
+                    {topUsers.map(([name, count], i) => (
+                      <div key={name} className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-medium shrink-0">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{name}</p>
+                          <div className="mt-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-primary rounded-full"
+                              style={{ width: `${totalTodos > 0 ? (count / totalTodos) * 100 : 0}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className="text-sm font-medium text-muted-foreground shrink-0">{count}개</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Users Page
+    // ========================================
+    function UsersPage({ users, todos, loading, onDeleteUser, onRefresh }) {
+      const [search, setSearch] = useState('');
+      const [confirmDelete, setConfirmDelete] = useState(null);
+
+      const filtered = useMemo(() => {
+        if (!search.trim()) return users;
+        const q = search.toLowerCase();
+        return users.filter(u =>
+          u.nickname.toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q)
+        );
+      }, [users, search]);
+
+      const handleDelete = async () => {
+        if (!confirmDelete) return;
+        await onDeleteUser(confirmDelete.id);
+        setConfirmDelete(null);
+      };
+
+      if (loading) {
+        return (
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-9 w-64" />
+            <Card><CardContent className="p-0">{[1,2,3].map(i => <Skeleton key={i} className="h-16 m-4" />)}</CardContent></Card>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-6 fade-in">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">유저 관리</h1>
+              <p className="text-sm text-muted-foreground mt-1">전체 {users.length}명의 유저</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={onRefresh}>
+              <IconRefresh size={14} className="mr-2" /> 새로고침
+            </Button>
+          </div>
+
+          {/* Search */}
+          <div className="relative max-w-sm">
+            <IconSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="이름 또는 이메일로 검색..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {/* Table */}
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>유저</TableHead>
+                  <TableHead className="hidden sm:table-cell">역할</TableHead>
+                  <TableHead className="hidden md:table-cell">할 일</TableHead>
+                  <TableHead className="hidden md:table-cell">가입일</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <EmptyState icon={IconUsers} title="유저가 없습니다" description={search ? '검색 결과가 없습니다' : '아직 가입한 유저가 없습니다'} />
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.map(u => (
+                  <TableRow key={u.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-medium shrink-0">
+                          {u.nickname?.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{u.nickname}</p>
+                          <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {u.role === 'admin'
+                        ? <Badge variant="default">관리자</Badge>
+                        : <Badge variant="secondary">유저</Badge>
+                      }
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span className="text-sm">{u.todo_count}개</span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(u.created_at).toLocaleDateString('ko-KR')}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {u.role !== 'admin' && (
+                        <Button
+                          variant="ghost" size="icon"
+                          onClick={() => setConfirmDelete(u)}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <IconTrash size={14} />
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+
+          {/* Delete Confirm Dialog */}
+          <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)}>
+            <DialogHeader>
+              <DialogTitle>유저 삭제</DialogTitle>
+              <DialogDescription>
+                <strong>{confirmDelete?.nickname}</strong> ({confirmDelete?.email}) 유저를 삭제하시겠습니까?
+                <br />해당 유저의 모든 할 일도 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={() => setConfirmDelete(null)}>취소</Button>
+              <Button variant="destructive" onClick={handleDelete}>삭제</Button>
+            </div>
+          </Dialog>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Todos Page
+    // ========================================
+    function TodosPage({ todos, loading, onDeleteTodo, onRefresh }) {
+      const [search, setSearch] = useState('');
+      const [filter, setFilter] = useState('all');
+      const [confirmDelete, setConfirmDelete] = useState(null);
+
+      const filtered = useMemo(() => {
+        let list = todos;
+        if (filter === 'active') list = list.filter(t => !t.done);
+        if (filter === 'done') list = list.filter(t => t.done);
+        if (search.trim()) {
+          const q = search.toLowerCase();
+          list = list.filter(t =>
+            t.text.toLowerCase().includes(q) ||
+            (t.user_nickname || '').toLowerCase().includes(q) ||
+            (t.user_email || '').toLowerCase().includes(q)
+          );
+        }
+        return list;
+      }, [todos, search, filter]);
+
+      const doneCount = todos.filter(t => t.done).length;
+      const activeCount = todos.length - doneCount;
+
+      const handleDelete = async () => {
+        if (!confirmDelete) return;
+        await onDeleteTodo(confirmDelete.id);
+        setConfirmDelete(null);
+      };
+
+      if (loading) {
+        return (
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-9 w-64" />
+            <Card><CardContent className="p-0">{[1,2,3].map(i => <Skeleton key={i} className="h-16 m-4" />)}</CardContent></Card>
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-6 fade-in">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">할 일 관리</h1>
+              <p className="text-sm text-muted-foreground mt-1">전체 {todos.length}개 / 진행 {activeCount}개 / 완료 {doneCount}개</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={onRefresh}>
+              <IconRefresh size={14} className="mr-2" /> 새로고침
+            </Button>
+          </div>
+
+          {/* Search & Filter */}
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1 max-w-sm">
+              <IconSearch size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="내용 또는 유저로 검색..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex gap-1">
+              {[
+                { key: 'all', label: '전체' },
+                { key: 'active', label: '진행 중' },
+                { key: 'done', label: '완료' },
+              ].map(f => (
+                <Button
+                  key={f.key}
+                  variant={filter === f.key ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setFilter(f.key)}
+                >
+                  {f.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Table */}
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[40px]">상태</TableHead>
+                  <TableHead>내용</TableHead>
+                  <TableHead className="hidden sm:table-cell">유저</TableHead>
+                  <TableHead className="hidden md:table-cell">등록일</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5}>
+                      <EmptyState icon={IconCheckSquare} title="할 일이 없습니다" description={search || filter !== 'all' ? '검색 결과가 없습니다' : '아직 등록된 할 일이 없습니다'} />
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.map(t => (
+                  <TableRow key={t.id}>
+                    <TableCell>
+                      {t.done
+                        ? <IconCheckCircle size={16} className="text-primary" />
+                        : <IconCircle size={16} className="text-muted-foreground/40" />
+                      }
+                    </TableCell>
+                    <TableCell>
+                      <p className={`text-sm ${t.done ? 'line-through text-muted-foreground' : ''}`}>{t.text}</p>
+                      <p className="text-xs text-muted-foreground sm:hidden mt-0.5">{t.user_nickname}</p>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-[10px] font-medium shrink-0">
+                          {t.user_nickname?.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm truncate">{t.user_nickname}</p>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <span className="text-sm text-muted-foreground">
+                        {new Date(t.created_at).toLocaleDateString('ko-KR')}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost" size="icon"
+                        onClick={() => setConfirmDelete(t)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <IconTrash size={14} />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+
+          {/* Delete Confirm Dialog */}
+          <Dialog open={!!confirmDelete} onClose={() => setConfirmDelete(null)}>
+            <DialogHeader>
+              <DialogTitle>할 일 삭제</DialogTitle>
+              <DialogDescription>
+                이 할 일을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.
+                <br /><br />
+                <span className="font-medium text-foreground">"{confirmDelete?.text}"</span>
+                <br />
+                <span className="text-xs">작성자: {confirmDelete?.user_nickname} ({confirmDelete?.user_email})</span>
+              </DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-end gap-2 mt-4">
+              <Button variant="outline" onClick={() => setConfirmDelete(null)}>취소</Button>
+              <Button variant="destructive" onClick={handleDelete}>삭제</Button>
+            </div>
+          </Dialog>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Admin Layout
+    // ========================================
+    function AdminLayout() {
+      const { token } = useAuth();
+      const { path } = useRouter();
+      const [users, setUsers] = useState([]);
+      const [todos, setTodos] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      const headers = useMemo(() => authHeaders(token), [token]);
+
+      const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+          const [usersRes, todosRes] = await Promise.all([
+            fetch(`${API_BASE_URL}/admin/users`, { headers }),
+            fetch(`${API_BASE_URL}/admin/todos`, { headers }),
+          ]);
+          const [usersJson, todosJson] = await Promise.all([usersRes.json(), todosRes.json()]);
+          if (usersJson.success) setUsers(usersJson.data);
+          if (todosJson.success) setTodos(todosJson.data);
+        } catch (err) {
+          console.error('Failed to fetch admin data:', err);
+        } finally {
+          setLoading(false);
+        }
+      }, [headers]);
+
+      useEffect(() => { fetchData(); }, [fetchData]);
+
+      const deleteUser = async (id) => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/admin/users/${id}`, { method: 'DELETE', headers });
+          const json = await res.json();
+          if (json.success) {
+            setUsers(prev => prev.filter(u => u.id !== id));
+            setTodos(prev => prev.filter(t => t.user_id !== id));
+          } else {
+            alert(json.message);
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      const deleteTodo = async (id) => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/admin/todos/${id}`, { method: 'DELETE', headers });
+          const json = await res.json();
+          if (json.success) setTodos(prev => prev.filter(t => t.id !== id));
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      let page;
+      if (path === '/users') {
+        page = <UsersPage users={users} todos={todos} loading={loading} onDeleteUser={deleteUser} onRefresh={fetchData} />;
+      } else if (path === '/todos') {
+        page = <TodosPage todos={todos} loading={loading} onDeleteTodo={deleteTodo} onRefresh={fetchData} />;
+      } else {
+        page = <DashboardPage users={users} todos={todos} loading={loading} onRefresh={fetchData} />;
+      }
+
+      return (
+        <div className="flex h-screen">
+          {/* Desktop Sidebar */}
+          <div className="hidden md:flex">
+            <Sidebar />
+          </div>
+
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col min-w-0">
+            <MobileHeader />
+            <main className="flex-1 overflow-y-auto p-4 md:p-8">
+              <div className="max-w-5xl mx-auto">
+                {page}
+              </div>
+            </main>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // App Component
+    // ========================================
+    function App() {
+      const [token, setToken] = useState(() => localStorage.getItem('admin_token'));
+      const [user, setUser] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('admin_user')); } catch { return null; }
+      });
+      const [checking, setChecking] = useState(!!token);
+
+      useEffect(() => {
+        if (!token) { setChecking(false); return; }
+        fetch(`${API_BASE_URL}/auth/me`, { headers: authHeaders(token) })
+          .then(r => r.json())
+          .then(json => {
+            if (!json.success || json.data.role !== 'admin') { doLogout(); }
+          })
+          .catch(() => { doLogout(); })
+          .finally(() => setChecking(false));
+      }, []);
+
+      const doLogin = (newToken, newUser) => {
+        setToken(newToken);
+        setUser(newUser);
+        localStorage.setItem('admin_token', newToken);
+        localStorage.setItem('admin_user', JSON.stringify(newUser));
+      };
+
+      const doLogout = () => {
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_user');
+      };
+
+      if (checking) {
+        return (
+          <div className="flex items-center justify-center min-h-screen">
+            <IconLoader size={20} className="text-muted-foreground" />
+          </div>
+        );
+      }
+
+      return (
+        <AuthContext.Provider value={{ token, user, login: doLogin, logout: doLogout }}>
+          {token && user ? (
+            <Router>
+              <AdminLayout />
+            </Router>
+          ) : (
+            <LoginPage />
+          )}
+        </AuthContext.Provider>
+      );
+    }
+
+    // ========================================
+    // Render
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
