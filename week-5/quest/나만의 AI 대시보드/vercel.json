@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "server.js", "use": "@vercel/node", "config": { "includeFiles": "notion-snapshot.json" } },
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "client.js", "use": "@vercel/static" },
+    { "src": "notion-snapshot.json", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/server.js" },
+    { "src": "/client.js", "dest": "/client.js" },
+    { "src": "/(.*)", "dest": "/server.js" }
+  ]
+}

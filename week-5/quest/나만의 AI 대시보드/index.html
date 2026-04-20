@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧭 나만의 AI 대시보드</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+      min-height: 100vh;
+      color: #e2e8f0;
+    }
+    .app { max-width: 1280px; margin: 0 auto; padding: 20px; }
+
+    /* ---------- Header ---------- */
+    header {
+      background: rgba(15,23,42,0.6);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(148,163,184,0.18);
+      border-radius: 14px;
+      padding: 14px 22px;
+      margin-bottom: 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 12px;
+    }
+    header h1 { font-size: 1.25rem; letter-spacing: -0.5px; }
+    .user-area { display:flex; gap:10px; align-items:center; font-size:0.9rem; }
+    .username { font-weight: 700; color: #60a5fa; }
+
+    /* ---------- Buttons ---------- */
+    .btn {
+      padding: 9px 16px; border: none; border-radius: 8px;
+      cursor: pointer; font-size: 0.9rem; font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #475569; cursor: not-allowed; }
+    .btn-ghost { background: rgba(148,163,184,0.15); color: #cbd5e0; }
+    .btn-ghost:hover { background: rgba(148,163,184,0.25); }
+    .btn-danger { background: rgba(248,113,113,0.15); color: #fca5a5; padding: 4px 10px; font-size: 0.78rem; }
+    .btn-danger:hover { background: rgba(248,113,113,0.25); }
+    .btn-icon {
+      width: 30px; height: 30px; padding: 0;
+      border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      background: rgba(148,163,184,0.15); color: #cbd5e0;
+      border: none; cursor: pointer;
+    }
+    .btn-icon.checked { background: #22c55e; color: white; }
+    .btn-icon:hover:not(:disabled) { background: rgba(148,163,184,0.3); }
+
+    .btn-link {
+      background: none; border: none;
+      color: #60a5fa; font-weight: 700; font-size: 0.95rem;
+      cursor: pointer; padding: 4px 6px;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+
+    /* ---------- Cards ---------- */
+    .card {
+      background: rgba(15,23,42,0.55);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(148,163,184,0.15);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .card h2 {
+      font-size: 0.92rem;
+      margin-bottom: 14px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 700;
+    }
+
+    /* ---------- Auth ---------- */
+    .auth-wrap {
+      max-width: 420px;
+      margin: 60px auto 0;
+    }
+    form { display: grid; gap: 12px; }
+    label { font-size: 0.8rem; font-weight: 600; color: #94a3b8; margin-bottom: 4px; }
+    input, textarea {
+      width: 100%; padding: 10px 12px;
+      border: 1px solid rgba(148,163,184,0.25);
+      background: rgba(15,23,42,0.4);
+      border-radius: 8px; color: #e2e8f0;
+      font-size: 0.95rem; font-family: inherit;
+    }
+    input:focus, textarea:focus {
+      outline: none; border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+    }
+    .auth-switch {
+      margin-top: 16px; padding-top: 14px;
+      border-top: 1px solid rgba(148,163,184,0.15);
+      text-align: center; font-size: 0.88rem; color: #94a3b8;
+    }
+    .msg {
+      padding: 10px 12px; border-radius: 8px;
+      font-size: 0.88rem; margin-bottom: 8px;
+    }
+    .msg-error { background: rgba(248,113,113,0.12); color: #fca5a5; }
+    .msg-success { background: rgba(34,197,94,0.12); color: #86efac; }
+
+    /* ---------- Brief Panel ---------- */
+    .brief-card {
+      background: linear-gradient(135deg, rgba(59,130,246,0.18), rgba(139,92,246,0.18));
+      border: 1px solid rgba(96,165,250,0.28);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .brief-card h2 {
+      font-size: 1.15rem; color: #e2e8f0;
+      text-transform: none; letter-spacing: -0.3px;
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 6px;
+    }
+    .brief-card .subtitle {
+      color: #cbd5e0; font-size: 0.85rem; margin-bottom: 14px;
+    }
+    .brief-content {
+      background: rgba(15,23,42,0.45);
+      border-radius: 10px; padding: 16px 18px;
+      font-size: 0.95rem; line-height: 1.7;
+      white-space: pre-wrap; word-break: break-word;
+      min-height: 60px;
+    }
+    .brief-meta {
+      margin-top: 10px; font-size: 0.75rem;
+      color: #94a3b8;
+    }
+    .loading-dots::after {
+      content: '⋯'; animation: pulse 1s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+
+    /* ---------- Grid ---------- */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 18px;
+    }
+    .col-4 { grid-column: span 4; }
+    .col-6 { grid-column: span 6; }
+    .col-8 { grid-column: span 8; }
+    .col-12 { grid-column: span 12; }
+
+    /* ---------- Weather ---------- */
+    .weather-main {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 10px;
+    }
+    .weather-emoji { font-size: 3.6rem; line-height: 1; }
+    .weather-temp {
+      font-size: 2.8rem; font-weight: 800;
+      line-height: 1; letter-spacing: -1px;
+    }
+    .weather-desc { font-size: 0.92rem; color: #cbd5e0; }
+    .weather-meta {
+      display: flex; gap: 14px; font-size: 0.82rem;
+      color: #94a3b8; flex-wrap: wrap;
+      padding-top: 12px;
+      border-top: 1px solid rgba(148,163,184,0.12);
+    }
+
+    /* ---------- Transactions ---------- */
+    .tx-totals {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .tx-totals .box {
+      background: rgba(15,23,42,0.4); border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .tx-totals .label {
+      font-size: 0.72rem; color: #94a3b8;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .tx-totals .value { font-size: 1.05rem; font-weight: 700; margin-top: 2px; }
+    .tx-totals .value.income { color: #34d399; }
+    .tx-totals .value.expense { color: #f87171; }
+    .tx-totals .value.balance { color: #60a5fa; }
+
+    .tx-cats {
+      display: grid; gap: 6px;
+    }
+    .tx-cat-row {
+      display: flex; justify-content: space-between;
+      font-size: 0.85rem;
+    }
+    .tx-cat-bar {
+      flex: 1; margin: 0 10px;
+      height: 6px; background: rgba(148,163,184,0.15);
+      border-radius: 999px; overflow: hidden; position: relative;
+    }
+    .tx-cat-bar-fill {
+      position: absolute; left: 0; top: 0; bottom: 0;
+      background: linear-gradient(90deg, #60a5fa, #a78bfa);
+      border-radius: 999px;
+    }
+
+    /* ---------- Notion ---------- */
+    .notion-todo {
+      padding: 8px 0;
+      border-bottom: 1px dashed rgba(148,163,184,0.12);
+      font-size: 0.92rem;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .notion-todo:last-child { border-bottom: none; }
+    .notion-tag {
+      margin-left: auto;
+      padding: 2px 8px;
+      background: rgba(148,163,184,0.15);
+      color: #94a3b8;
+      font-size: 0.72rem; font-weight: 600;
+      border-radius: 999px;
+    }
+    .notion-source {
+      display: inline-block;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 700;
+      margin-left: 6px;
+    }
+    .notion-source.live { background: rgba(34,197,94,0.18); color: #86efac; }
+    .notion-source.snapshot { background: rgba(148,163,184,0.18); color: #94a3b8; }
+
+    /* ---------- Habits ---------- */
+    .habit-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px dashed rgba(148,163,184,0.12);
+    }
+    .habit-row:last-child { border-bottom: none; }
+    .habit-emoji { font-size: 1.25rem; }
+    .habit-name { flex: 1; font-size: 0.9rem; }
+    .habit-stats {
+      font-size: 0.72rem; color: #94a3b8;
+      margin-right: 8px;
+    }
+    .habit-add-form {
+      margin-top: 12px; padding-top: 12px;
+      border-top: 1px solid rgba(148,163,184,0.12);
+      display: grid;
+      grid-template-columns: 50px 1fr auto;
+      gap: 8px;
+    }
+
+    /* ---------- Memos ---------- */
+    .memo-input-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-bottom: 10px; }
+    .memo-row {
+      padding: 8px 10px;
+      background: rgba(15,23,42,0.4);
+      border-radius: 8px;
+      margin-bottom: 6px;
+      font-size: 0.85rem;
+      display: flex; justify-content: space-between; align-items: start;
+      gap: 8px;
+    }
+    .memo-row .content { flex: 1; white-space: pre-wrap; word-break: break-word; }
+
+    /* ---------- News ---------- */
+    .news-row {
+      display: flex; gap: 10px; padding: 8px 0;
+      border-bottom: 1px dashed rgba(148,163,184,0.12);
+      font-size: 0.85rem;
+    }
+    .news-row:last-child { border-bottom: none; }
+    .news-idx { color: #94a3b8; font-weight: 700; min-width: 20px; }
+    .news-row a { color: #e2e8f0; text-decoration: none; flex: 1; line-height: 1.4; }
+    .news-row a:hover { color: #60a5fa; }
+    .news-score { color: #94a3b8; font-size: 0.75rem; }
+
+    .section-note {
+      font-size: 0.72rem; color: #94a3b8;
+      margin-top: 10px; padding-top: 8px;
+      border-top: 1px dashed rgba(148,163,184,0.12);
+    }
+
+    .empty {
+      text-align: center; color: #64748b;
+      padding: 24px 10px;
+      font-size: 0.85rem;
+    }
+
+    .hidden { display: none !important; }
+
+    @media (max-width: 960px) {
+      .col-4, .col-6, .col-8 { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1 id="homeBtn" style="cursor:pointer;">🧭 나만의 AI 대시보드</h1>
+      <div id="navArea" class="user-area"></div>
+    </header>
+
+    <main id="main"></main>
+  </div>
+
+  <!-- Template: Login -->
+  <template id="tpl-login">
+    <div class="auth-wrap">
+      <div class="card">
+        <h2 style="text-align:center; font-size:1.1rem; color:#e2e8f0; text-transform:none; letter-spacing:normal;">
+          🔐 로그인
+        </h2>
+        <div id="authMsg"></div>
+        <form id="loginForm">
+          <div>
+            <label>이메일</label>
+            <input type="email" name="email" required autocomplete="email" />
+          </div>
+          <div>
+            <label>비밀번호</label>
+            <input type="password" name="password" required autocomplete="current-password" />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">로그인</button>
+        </form>
+        <div class="auth-switch">
+          아직 계정이 없나요?
+          <button type="button" class="btn-link" id="goRegister">회원가입</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: Register -->
+  <template id="tpl-register">
+    <div class="auth-wrap">
+      <div class="card">
+        <h2 style="text-align:center; font-size:1.1rem; color:#e2e8f0; text-transform:none; letter-spacing:normal;">
+          ✨ 회원가입
+        </h2>
+        <div id="authMsg"></div>
+        <form id="registerForm">
+          <div>
+            <label>이메일</label>
+            <input type="email" name="email" required autocomplete="email" />
+          </div>
+          <div>
+            <label>이름</label>
+            <input type="text" name="name" required maxlength="30" placeholder="대시보드에 표시될 이름" />
+          </div>
+          <div>
+            <label>비밀번호 <span style="color:#64748b; font-weight:400;">(6자 이상)</span></label>
+            <input type="password" name="password" required minlength="6" autocomplete="new-password" />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">가입하기</button>
+        </form>
+        <div class="auth-switch">
+          이미 계정이 있나요?
+          <button type="button" class="btn-link" id="goLogin">로그인</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: Dashboard -->
+  <template id="tpl-dashboard">
+    <section class="brief-card">
+      <h2>✨ 오늘의 브리핑</h2>
+      <div class="subtitle">날씨 · 할 일 · 지출 · 습관을 종합해 AI가 요약합니다</div>
+      <div class="brief-content" id="briefContent">
+        <span style="color:#94a3b8;">우측 하단 "브리핑 생성" 버튼을 눌러보세요.</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+        <div class="brief-meta" id="briefMeta"></div>
+        <button class="btn btn-primary" id="briefBtn">✨ 브리핑 생성</button>
+      </div>
+    </section>
+
+    <div class="grid">
+      <!-- Weather -->
+      <div class="col-4">
+        <div class="card">
+          <h2>🌤️ 오늘 날씨</h2>
+          <div id="weatherBody">
+            <div class="empty loading-dots">로딩 중</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions -->
+      <div class="col-8">
+        <div class="card">
+          <h2>💰 이달 가계부 요약</h2>
+          <div id="txBody">
+            <div class="empty loading-dots">로딩 중</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Notion Todos -->
+      <div class="col-6">
+        <div class="card">
+          <h2>📝 노션 할 일 <span id="notionSource"></span></h2>
+          <div id="notionBody">
+            <div class="empty loading-dots">로딩 중</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Habits -->
+      <div class="col-6">
+        <div class="card">
+          <h2>🎯 내 습관 (최근 7일)</h2>
+          <div id="habitsBody">
+            <div class="empty loading-dots">로딩 중</div>
+          </div>
+          <form id="habitForm" class="habit-add-form">
+            <input type="text" name="icon" maxlength="4" placeholder="🌱" value="🌱" style="text-align:center;" />
+            <input type="text" name="name" required maxlength="60" placeholder="새 습관 추가" />
+            <button type="submit" class="btn btn-primary">＋</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- News -->
+      <div class="col-6">
+        <div class="card">
+          <h2>📰 오늘의 테크 뉴스 (HN)</h2>
+          <div id="newsBody">
+            <div class="empty loading-dots">로딩 중</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Memos -->
+      <div class="col-6">
+        <div class="card">
+          <h2>🗒️ 퀵 메모</h2>
+          <div class="memo-input-row">
+            <input type="text" id="memoInput" maxlength="500" placeholder="생각나는 걸 기록해두세요" />
+            <button class="btn btn-primary" id="memoAddBtn">＋</button>
+          </div>
+          <div id="memosBody">
+            <div class="empty">아직 메모가 없어요</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="client.js"></script>
+</body>
+</html>

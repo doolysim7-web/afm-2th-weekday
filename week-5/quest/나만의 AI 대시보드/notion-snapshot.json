@@ -1,0 +1,21 @@
+{
+  "page_id": "34793fd9-5b00-80d4-a667-e0e6bf26256d",
+  "title": "나의 할일",
+  "url": "https://www.notion.so/34793fd95b0080d4a667e0e6bf26256d",
+  "synced_at": "2026-04-20T14:30:00.000Z",
+  "synced_via": "Notion MCP (snapshot)",
+  "todos": [
+    { "text": "복습하기", "registered": "4/14" },
+    { "text": "집 청소하기", "registered": "4/14" },
+    { "text": "블로그 글 초안 작성", "registered": "4/14" },
+    { "text": "현업 회의", "registered": "4/21" },
+    { "text": "개발안 검토", "registered": "4/17" }
+  ],
+  "books": [
+    { "title": "괴테는 모든 것을 말했다", "author": "스즈키 유이", "tag": "소설 / 아쿠타가와상 수상작" },
+    { "title": "안녕이라 그랬어", "author": "김애란", "tag": "단편소설집 / 올해의 소설" },
+    { "title": "혼모노", "author": "성해나", "tag": "단편소설집 / 이효석문학상" },
+    { "title": "트렌드 코리아 2026", "author": "김난도 외", "tag": "경제·트렌드 / 베스트셀러 1위" },
+    { "title": "모순", "author": "양귀자", "tag": "소설 / 역주행 베스트셀러" }
+  ]
+}
