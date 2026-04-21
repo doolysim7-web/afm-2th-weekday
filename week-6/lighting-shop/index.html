@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LUMIÈRE — 빛으로 공간을 완성하다</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cream: '#FAF8F5',
+            ink: '#1F1B16',
+            gold: '#C8A97E',
+            'gold-dark': '#A88856',
+          },
+          fontFamily: {
+            serif: ['"Playfair Display"', '"Noto Serif KR"', 'serif'],
+            sans: ['"Noto Sans KR"', 'system-ui', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://js.tosspayments.com/v2/standard"></script>
+  <script>
+    // TossPayments redirects to /payments/success (or /fail) with query params
+    // BEFORE the hash — but our SPA is hash-routed. Rewrite the URL to a hash
+    // route at the earliest moment, before the React app reads the location.
+    (function () {
+      var p = window.location.pathname;
+      if (p === '/payments/success' || p === '/payments/fail') {
+        var route = p === '/payments/success' ? '/payments/success' : '/payments/fail';
+        var search = window.location.search || '';
+        var newUrl = window.location.origin + '/#' + route + search;
+        window.history.replaceState(null, '', newUrl);
+      }
+    })();
+  </script>
+  <style>
+    html, body { background: #FAF8F5; color: #1F1B16; }
+    body { font-family: 'Noto Sans KR', system-ui, sans-serif; }
+    .hero-overlay { background: linear-gradient(to bottom, rgba(31,27,22,0.2) 0%, rgba(31,27,22,0.65) 100%); }
+    .img-fallback { background: #E8E1D6; }
+  </style>
+</head>
+<body class="bg-cream text-ink">
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useContext, createContext, useCallback, useRef } = React;
+
+    // TossPayments client key (safe to expose — use test docs key by default).
+    const TOSS_CLIENT_KEY = 'test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm';
+
+    // ============================================================
+    // 📦 Data
+    // ============================================================
+    const PRODUCTS = [
+      { id: 1, slug: 'luna-pendant', name: 'LUNA 펜던트 조명', category: '펜던트', price: 108000, image: 'https://images.unsplash.com/photo-1540932239986-30128078f3c5?w=1024&q=80&auto=format&fit=crop',
+        description: '미니멀한 유리 쉐이드의 모던 펜던트. 다이닝·거실 공간의 중심이 되는 은은한 빛.',
+        specs: { '와트': 'LED 18W', '사이즈': 'Ø30cm × H35cm', '색온도': '3000K 웜화이트', '소재': '유리 + 스틸' } },
+      { id: 2, slug: 'nocturne-floor', name: 'NOCTURNE 플로어 램프', category: '플로어', price: 180000, image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?w=1024&q=80&auto=format&fit=crop',
+        description: '블랙 매트 피니시의 슬림한 플로어 램프. 거실 한편에 우아한 수직선을 더합니다.',
+        specs: { '와트': 'LED 24W', '사이즈': 'Ø25cm × H162cm', '색온도': '2700K 앰버', '소재': '스틸 + 린넨' } },
+      { id: 3, slug: 'soleil-table', name: 'SOLEIL 테이블 램프', category: '테이블', price: 75000, image: 'https://images.unsplash.com/photo-1774916698642-258ea43637e9?w=1024&q=80&auto=format&fit=crop',
+        description: '골드 브라스 베이스 + 화이트 코튼 쉐이드. 침실 사이드 테이블에 따뜻함을 더합니다.',
+        specs: { '와트': 'LED 12W', '사이즈': 'Ø20cm × H42cm', '색온도': '3000K 웜화이트', '소재': '브라스 + 코튼' } },
+      { id: 4, slug: 'aurora-chandelier', name: 'AURORA 크리스탈 샹들리에', category: '샹들리에', price: 420000, image: 'https://images.unsplash.com/photo-1765118106411-dccdfb21f77d?w=1024&q=80&auto=format&fit=crop',
+        description: '다층 크리스탈 프리즘이 빛을 산란시키는 럭셔리 샹들리에. 현관·다이닝홀의 포컬 포인트.',
+        specs: { '와트': 'LED 80W (8구)', '사이즈': 'Ø65cm × H50cm', '색온도': '2700K 따뜻한 빛', '소재': '크리스탈 + 크롬' } },
+      { id: 5, slug: 'hearth-wall', name: 'HEARTH 우드 벽 조명', category: '벽조명', price: 62000, image: 'https://images.unsplash.com/photo-1762631817831-c3e7ee1b1467?w=1024&q=80&auto=format&fit=crop',
+        description: '원목 베이스의 아늑한 벽 조명. 복도·침실 머리맡에 부드러운 간접광.',
+        specs: { '와트': 'LED 9W', '사이즈': 'W18cm × H24cm × D12cm', '색온도': '2700K', '소재': '오크 원목 + 린넨' } },
+      { id: 6, slug: 'forge-stand', name: 'FORGE 인더스트리얼 스탠드', category: '스탠드', price: 135000, image: 'https://images.unsplash.com/photo-1648083411102-bcac221d3bc2?w=1024&q=80&auto=format&fit=crop',
+        description: '블랙 메탈 프레임 + 에디슨 벌브의 로프트 감성 스탠드. 서재·거실에 무드를 더합니다.',
+        specs: { '와트': 'E26 에디슨 60W', '사이즈': 'Ø30cm × H155cm', '색온도': '2200K 딥앰버', '소재': '스틸' } },
+      { id: 7, slug: 'leaf-desk', name: 'LEAF 미니멀 책상 조명', category: '데스크', price: 48000, image: 'https://images.unsplash.com/photo-1773525911805-bebab1d3e0e4?w=1024&q=80&auto=format&fit=crop',
+        description: '잎사귀를 닮은 곡선 암의 화이트 책상 조명. 눈부심 없는 집중 조명.',
+        specs: { '와트': 'LED 10W', '사이즈': 'H45cm (조절 가능)', '색온도': '4000K 주광색', '소재': '알루미늄' } },
+      { id: 8, slug: 'ember-cordless', name: 'EMBER 무선 무드 램프', category: '무드등', price: 35000, image: 'https://images.unsplash.com/photo-1667312939978-64cf31718a6e?w=1024&q=80&auto=format&fit=crop',
+        description: '휴대 가능한 무선 무드등. USB-C 충전 20시간 사용. 침대 옆·캠핑·야외 테이블까지.',
+        specs: { '와트': 'LED 3W', '사이즈': 'Ø10cm × H15cm', '색온도': '2200K 앰버 (3단계 디밍)', '소재': '세라믹 + 실리콘' } },
+    ];
+
+    const CATEGORIES = ['전체','펜던트','플로어','테이블','샹들리에','벽조명','스탠드','데스크','무드등'];
+
+    const fmtKRW = (n) => new Intl.NumberFormat('ko-KR').format(Math.round(n)) + '원';
+
+    // ============================================================
+    // 🔀 Router (hash-based)
+    // ============================================================
+    const RouterContext = createContext(null);
+
+    function parseHash() {
+      const h = (window.location.hash || '#/').replace(/^#/, '');
+      const [path, query = ''] = h.split('?');
+      const params = Object.fromEntries(new URLSearchParams(query));
+      return { path: path.startsWith('/') ? path : '/' + path, query: params };
+    }
+
+    function matchRoute(routePath, currentPath) {
+      const rp = routePath.split('/').filter(Boolean);
+      const cp = currentPath.split('/').filter(Boolean);
+      if (rp.length !== cp.length) return null;
+      const params = {};
+      for (let i = 0; i < rp.length; i++) {
+        if (rp[i].startsWith(':')) params[rp[i].slice(1)] = decodeURIComponent(cp[i]);
+        else if (rp[i] !== cp[i]) return null;
+      }
+      return params;
+    }
+
+    function Router({ children }) {
+      const [route, setRoute] = useState(parseHash());
+      useEffect(() => {
+        const onHashChange = () => {
+          setRoute(parseHash());
+          window.scrollTo({ top: 0, behavior: 'instant' });
+        };
+        window.addEventListener('hashchange', onHashChange);
+        if (!window.location.hash) window.location.hash = '#/';
+        return () => window.removeEventListener('hashchange', onHashChange);
+      }, []);
+      return <RouterContext.Provider value={route}>{children}</RouterContext.Provider>;
+    }
+
+    const useRouter = () => useContext(RouterContext);
+
+    function Link({ to, className = '', children, ...rest }) {
+      return <a href={'#' + to} className={className} {...rest}>{children}</a>;
+    }
+
+    const navigate = (to) => { window.location.hash = '#' + to; };
+
+    // ============================================================
+    // 🛒 Cart (Context + localStorage)
+    // ============================================================
+    const CartContext = createContext(null);
+
+    function CartProvider({ children }) {
+      const [items, setItems] = useState([]);
+      const [hydrated, setHydrated] = useState(false);
+
+      useEffect(() => {
+        try {
+          const raw = localStorage.getItem('lumiere_cart');
+          if (raw) setItems(JSON.parse(raw));
+        } catch {}
+        setHydrated(true);
+      }, []);
+
+      useEffect(() => {
+        if (!hydrated) return;
+        try { localStorage.setItem('lumiere_cart', JSON.stringify(items)); } catch {}
+      }, [items, hydrated]);
+
+      const addToCart = useCallback((product, qty = 1) => {
+        setItems(prev => {
+          const existing = prev.find(it => it.id === product.id);
+          if (existing) return prev.map(it => it.id === product.id ? { ...it, qty: it.qty + qty } : it);
+          return [...prev, { id: product.id, slug: product.slug, name: product.name, price: product.price, image: product.image, qty }];
+        });
+      }, []);
+
+      const updateQty = useCallback((id, qty) => {
+        if (qty < 1) return;
+        setItems(prev => prev.map(it => it.id === id ? { ...it, qty } : it));
+      }, []);
+
+      const removeFromCart = useCallback((id) => {
+        setItems(prev => prev.filter(it => it.id !== id));
+      }, []);
+
+      const clearCart = useCallback(() => setItems([]), []);
+
+      const count = items.reduce((s, it) => s + it.qty, 0);
+      const subtotal = items.reduce((s, it) => s + it.price * it.qty, 0);
+      const shippingFee = subtotal === 0 || subtotal >= 50000 ? 0 : 3000;
+      const total = subtotal + shippingFee;
+
+      return (
+        <CartContext.Provider value={{ items, addToCart, updateQty, removeFromCart, clearCart, count, subtotal, shippingFee, total }}>
+          {children}
+        </CartContext.Provider>
+      );
+    }
+
+    const useCart = () => useContext(CartContext);
+
+    // ============================================================
+    // 🎨 Design System
+    // ============================================================
+    function Button({ variant = 'primary', size = 'md', className = '', children, ...rest }) {
+      const base = 'inline-flex items-center justify-center font-medium rounded-full transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed';
+      const sizes = { sm: 'px-4 py-2 text-sm', md: 'px-6 py-3 text-sm', lg: 'px-8 py-4 text-base' };
+      const variants = {
+        primary: 'bg-ink text-cream hover:bg-gold-dark',
+        gold: 'bg-gold text-white hover:bg-gold-dark',
+        outline: 'border border-gold text-gold-dark hover:bg-gold hover:text-white',
+        secondary: 'bg-white text-ink border border-ink/10 hover:border-gold hover:text-gold-dark',
+        ghost: 'text-ink hover:bg-ink/5',
+        danger: 'text-red-600 hover:bg-red-50',
+      };
+      return <button className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...rest}>{children}</button>;
+    }
+
+    function Badge({ variant = 'neutral', className = '', children }) {
+      const variants = {
+        neutral: 'bg-ink/5 text-ink/70',
+        gold: 'bg-gold/15 text-gold-dark',
+        dark: 'bg-ink text-cream',
+      };
+      return <span className={`inline-block px-3 py-1 text-xs tracking-widest uppercase rounded-full ${variants[variant]} ${className}`}>{children}</span>;
+    }
+
+    function QtyStepper({ value, onChange, size = 'md' }) {
+      const btn = size === 'sm' ? 'w-7 h-7 text-sm' : 'w-10 h-10';
+      const num = size === 'sm' ? 'w-8 text-sm' : 'w-12';
+      return (
+        <div className="inline-flex items-center border border-ink/15 rounded-full select-none">
+          <button className={`${btn} flex items-center justify-center hover:bg-ink/5 rounded-l-full`} onClick={() => onChange(Math.max(1, value - 1))} aria-label="수량 감소">−</button>
+          <span className={`${num} text-center tabular-nums`}>{value}</span>
+          <button className={`${btn} flex items-center justify-center hover:bg-ink/5 rounded-r-full`} onClick={() => onChange(value + 1)} aria-label="수량 증가">+</button>
+        </div>
+      );
+    }
+
+    function Chip({ active, onClick, children }) {
+      return (
+        <button onClick={onClick}
+          className={`px-4 py-2 text-sm rounded-full transition-all whitespace-nowrap border ${
+            active
+              ? 'bg-ink text-cream border-ink'
+              : 'bg-white text-ink/70 border-ink/10 hover:border-gold hover:text-gold-dark'
+          }`}>
+          {children}
+        </button>
+      );
+    }
+
+    function ImgSafe({ src, alt, className = '' }) {
+      const [failed, setFailed] = useState(false);
+      if (failed) {
+        return (
+          <div className={`img-fallback flex items-center justify-center ${className}`}>
+            <span className="text-ink/30 text-xs tracking-widest uppercase">{alt || 'LUMIÈRE'}</span>
+          </div>
+        );
+      }
+      return <img src={src} alt={alt || ''} className={className} onError={() => setFailed(true)} />;
+    }
+
+    // ============================================================
+    // 🧩 Layout
+    // ============================================================
+    function Header() {
+      const { count } = useCart();
+      const [scrolled, setScrolled] = useState(false);
+      useEffect(() => {
+        const onScroll = () => setScrolled(window.scrollY > 10);
+        window.addEventListener('scroll', onScroll);
+        return () => window.removeEventListener('scroll', onScroll);
+      }, []);
+      return (
+        <header className={`sticky top-0 z-50 bg-cream/85 backdrop-blur transition-all ${scrolled ? 'border-b border-ink/10' : 'border-b border-transparent'}`}>
+          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <Link to="/" className="font-serif text-2xl tracking-wide hover:text-gold-dark transition-colors">LUMIÈRE</Link>
+            <nav className="hidden md:flex items-center gap-10 text-sm">
+              <Link to="/" className="hover:text-gold-dark transition-colors">홈</Link>
+              <Link to="/products" className="hover:text-gold-dark transition-colors">컬렉션</Link>
+              <Link to="/about" className="hover:text-gold-dark transition-colors">브랜드</Link>
+            </nav>
+            <Link to="/cart" className="relative inline-flex items-center gap-2 text-sm hover:text-gold-dark transition-colors">
+              <span className="text-lg">🛒</span>
+              <span className="hidden sm:inline">장바구니</span>
+              {count > 0 && (
+                <span className="absolute -top-1 -right-2 sm:static sm:ml-1 bg-gold text-white text-xs min-w-[20px] h-5 px-1 rounded-full inline-flex items-center justify-center">
+                  {count}
+                </span>
+              )}
+            </Link>
+          </div>
+        </header>
+      );
+    }
+
+    function Footer() {
+      return (
+        <footer className="mt-24 border-t border-ink/10 bg-white/50">
+          <div className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-3 gap-10 text-sm">
+            <div>
+              <div className="font-serif text-2xl mb-4">LUMIÈRE</div>
+              <p className="text-ink/60 leading-relaxed">
+                2024년 서울에서 시작된 조명 큐레이션 스토어.<br />
+                공간을 완성하는 단 하나의 빛을 선별합니다.
+              </p>
+            </div>
+            <div>
+              <div className="font-medium mb-4 tracking-wide">고객센터</div>
+              <p className="text-ink/60 leading-relaxed">
+                전화: 1588-0000<br />
+                운영시간: 평일 10:00–18:00<br />
+                점심: 12:30–13:30<br />
+                <span className="text-ink/40">주말·공휴일 휴무</span>
+              </p>
+            </div>
+            <div>
+              <div className="font-medium mb-4 tracking-wide">고객 안내</div>
+              <ul className="text-ink/60 space-y-2">
+                <li><a href="#" className="hover:text-gold-dark">배송 안내</a></li>
+                <li><a href="#" className="hover:text-gold-dark">교환·환불 안내</a></li>
+                <li><a href="#" className="hover:text-gold-dark">설치 서비스</a></li>
+                <li><a href="#" className="hover:text-gold-dark">자주 묻는 질문</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="border-t border-ink/10">
+            <div className="max-w-7xl mx-auto px-6 py-5 text-xs text-ink/40 flex flex-col sm:flex-row justify-between gap-2">
+              <span>© 2026 LUMIÈRE. All rights reserved.</span>
+              <span>사업자등록번호 000-00-00000 · 통신판매업 2026-서울-0000</span>
+            </div>
+          </div>
+        </footer>
+      );
+    }
+
+    function ProductCard({ product }) {
+      return (
+        <Link to={`/product/${product.id}`} className="group block">
+          <div className="aspect-square overflow-hidden rounded-2xl bg-white shadow-sm transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-lg">
+            <ImgSafe src={product.image} alt={product.name} className="w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-500" />
+          </div>
+          <div className="mt-4">
+            <div className="text-xs tracking-[0.2em] uppercase text-ink/40">{product.category}</div>
+            <div className="font-serif text-lg mt-1 group-hover:text-gold-dark transition-colors">{product.name}</div>
+            <div className="mt-1 text-ink/80">{fmtKRW(product.price)}</div>
+          </div>
+        </Link>
+      );
+    }
+
+    // ============================================================
+    // 📄 Pages
+    // ============================================================
+    function HomePage() {
+      const featured = [1, 2, 4, 6].map(id => PRODUCTS.find(p => p.id === id));
+      const categoryTiles = [
+        { label: '펜던트', filter: '펜던트', image: 'https://images.unsplash.com/photo-1540932239986-30128078f3c5?w=1024&q=80&auto=format&fit=crop' },
+        { label: '플로어 · 스탠드', filter: '플로어', image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?w=1024&q=80&auto=format&fit=crop' },
+        { label: '테이블 · 데스크', filter: '테이블', image: 'https://images.unsplash.com/photo-1774916698642-258ea43637e9?w=1024&q=80&auto=format&fit=crop' },
+        { label: '샹들리에', filter: '샹들리에', image: 'https://images.unsplash.com/photo-1765118106411-dccdfb21f77d?w=1024&q=80&auto=format&fit=crop' },
+      ];
+      return (
+        <>
+          {/* Hero */}
+          <section className="relative w-full min-h-[70vh] overflow-hidden">
+            <ImgSafe src="https://images.unsplash.com/photo-1765118106411-dccdfb21f77d?w=1024&q=80&auto=format&fit=crop" alt="" className="absolute inset-0 w-full h-full object-cover" />
+            <div className="absolute inset-0 hero-overlay"></div>
+            <div className="relative z-10 max-w-7xl mx-auto px-6 py-32 md:py-44 text-white">
+              <div className="max-w-2xl">
+                <div className="text-xs tracking-[0.35em] uppercase text-gold mb-5">Collection 2026</div>
+                <h1 className="font-serif text-5xl md:text-7xl leading-[1.05]">빛으로 공간을<br />완성하다</h1>
+                <p className="mt-7 text-white/85 md:text-lg leading-relaxed">
+                  당신의 공간에 어울리는 단 하나의 조명을 찾아보세요.<br />
+                  LUMIÈRE는 일상에 깊이를 더하는 빛을 큐레이션합니다.
+                </p>
+                <div className="mt-10 flex flex-wrap gap-3">
+                  <Link to="/products"><Button variant="gold" size="lg">컬렉션 보기</Button></Link>
+                  <Link to="/about"><Button size="lg" className="!bg-white/10 !text-white !border !border-white/30 hover:!bg-white/20">브랜드 이야기</Button></Link>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Featured */}
+          <section className="max-w-7xl mx-auto px-6 py-20">
+            <div className="flex items-end justify-between mb-10">
+              <div>
+                <div className="text-xs tracking-[0.25em] uppercase text-gold-dark">Curated</div>
+                <h2 className="font-serif text-3xl md:text-4xl mt-2">이달의 큐레이션</h2>
+              </div>
+              <Link to="/products" className="hidden md:inline text-sm text-ink/60 hover:text-gold-dark">전체 보기 →</Link>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+              {featured.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          </section>
+
+          {/* Categories */}
+          <section className="max-w-7xl mx-auto px-6 py-16">
+            <div className="text-center mb-12">
+              <div className="text-xs tracking-[0.25em] uppercase text-gold-dark">Categories</div>
+              <h2 className="font-serif text-3xl md:text-4xl mt-2">카테고리별로 보기</h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {categoryTiles.map(t => (
+                <Link key={t.label} to={`/products?cat=${encodeURIComponent(t.filter)}`} className="group relative aspect-square overflow-hidden rounded-2xl">
+                  <ImgSafe src={t.image} alt={t.label} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-ink/85 via-ink/20 to-transparent"></div>
+                  <div className="absolute bottom-5 left-5 text-white font-serif text-xl md:text-2xl">{t.label}</div>
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* Benefits */}
+          <section className="bg-white/70 border-y border-ink/10 mt-8">
+            <div className="max-w-7xl mx-auto px-6 py-14 grid md:grid-cols-3 gap-8 text-center">
+              <div>
+                <div className="text-3xl mb-3">🚚</div>
+                <div className="font-serif text-lg">전국 무료배송</div>
+                <div className="text-sm text-ink/60 mt-1.5">5만원 이상 주문 시 무료</div>
+              </div>
+              <div>
+                <div className="text-3xl mb-3">↔️</div>
+                <div className="font-serif text-lg">14일 교환·환불</div>
+                <div className="text-sm text-ink/60 mt-1.5">단순 변심도 편하게</div>
+              </div>
+              <div>
+                <div className="text-3xl mb-3">🛠️</div>
+                <div className="font-serif text-lg">안심 A/S 1년</div>
+                <div className="text-sm text-ink/60 mt-1.5">제품 결함 무상 수리</div>
+              </div>
+            </div>
+          </section>
+        </>
+      );
+    }
+
+    function ProductsPage() {
+      const { query } = useRouter();
+      const initialCat = query.cat && CATEGORIES.includes(query.cat) ? query.cat : '전체';
+      const [cat, setCat] = useState(initialCat);
+      useEffect(() => { setCat(initialCat); }, [initialCat]);
+
+      const filtered = cat === '전체' ? PRODUCTS : PRODUCTS.filter(p => p.category === cat);
+
+      const onSelect = (c) => {
+        setCat(c);
+        if (c === '전체') navigate('/products');
+        else navigate(`/products?cat=${encodeURIComponent(c)}`);
+      };
+
+      return (
+        <section className="max-w-7xl mx-auto px-6 py-14">
+          <div className="mb-10">
+            <div className="text-xs tracking-[0.25em] uppercase text-gold-dark">Collection</div>
+            <h2 className="font-serif text-4xl md:text-5xl mt-2">전체 컬렉션</h2>
+            <p className="mt-3 text-ink/60">총 {filtered.length}개의 제품</p>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-10 -mx-6 px-6 md:mx-0 md:px-0 overflow-x-auto pb-1">
+            {CATEGORIES.map(c => (
+              <Chip key={c} active={cat === c} onClick={() => onSelect(c)}>{c}</Chip>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="text-center py-20 text-ink/50">해당 카테고리의 제품이 아직 없어요.</div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+              {filtered.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          )}
+        </section>
+      );
+    }
+
+    function ProductDetailPage() {
+      const { path } = useRouter();
+      const match = matchRoute('/product/:id', path);
+      const id = match ? Number(match.id) : null;
+      const product = PRODUCTS.find(p => p.id === id);
+      const [qty, setQty] = useState(1);
+      const { addToCart } = useCart();
+
+      if (!product) {
+        return (
+          <section className="max-w-4xl mx-auto px-6 py-20 text-center">
+            <div className="font-serif text-2xl mb-3">제품을 찾을 수 없습니다</div>
+            <Link to="/products" className="text-gold-dark hover:underline">컬렉션으로 돌아가기</Link>
+          </section>
+        );
+      }
+
+      const similar = PRODUCTS.filter(p => p.id !== product.id).slice(0, 4);
+
+      const onAdd = () => {
+        addToCart(product, qty);
+        alert(`${product.name} ${qty}개를 장바구니에 담았어요.`);
+      };
+      const onBuyNow = () => {
+        addToCart(product, qty);
+        navigate('/cart');
+      };
+
+      return (
+        <>
+          <section className="max-w-7xl mx-auto px-6 py-10 md:py-14">
+            <div className="text-sm text-ink/50 mb-6">
+              <Link to="/products" className="hover:text-gold-dark">컬렉션</Link>
+              <span className="mx-2">/</span>
+              <span>{product.category}</span>
+            </div>
+            <div className="grid md:grid-cols-2 gap-10 lg:gap-16">
+              <div className="aspect-square overflow-hidden rounded-2xl bg-white shadow-sm">
+                <ImgSafe src={product.image} alt={product.name} className="w-full h-full object-cover" />
+              </div>
+              <div>
+                <Badge variant="gold">{product.category}</Badge>
+                <h1 className="font-serif text-4xl md:text-5xl mt-4 leading-tight">{product.name}</h1>
+                <div className="mt-5 text-2xl">{fmtKRW(product.price)}</div>
+                <p className="mt-8 text-ink/75 leading-relaxed">{product.description}</p>
+
+                <dl className="mt-10 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-ink/10 pt-8">
+                  {Object.entries(product.specs).map(([k, v]) => (
+                    <div key={k}>
+                      <dt className="text-xs tracking-[0.2em] uppercase text-ink/40">{k}</dt>
+                      <dd className="mt-1.5 text-sm">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                <div className="mt-10 flex items-center gap-5">
+                  <span className="text-sm text-ink/60">수량</span>
+                  <QtyStepper value={qty} onChange={setQty} />
+                </div>
+                <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                  <Button variant="primary" size="lg" className="flex-1" onClick={onAdd}>장바구니 담기</Button>
+                  <Button variant="outline" size="lg" className="flex-1" onClick={onBuyNow}>바로 구매</Button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="max-w-7xl mx-auto px-6 py-12">
+            <h2 className="font-serif text-2xl md:text-3xl mb-8">비슷한 조명</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+              {similar.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+          </section>
+        </>
+      );
+    }
+
+    function CartPage() {
+      const { items, updateQty, removeFromCart, subtotal, shippingFee, total } = useCart();
+
+      const onCheckout = () => {
+        if (items.length === 0) return;
+        navigate('/checkout');
+      };
+
+      if (items.length === 0) {
+        return (
+          <section className="max-w-4xl mx-auto px-6 py-24 text-center">
+            <div className="text-5xl mb-6">🛒</div>
+            <h1 className="font-serif text-3xl mb-3">장바구니가 비어있어요</h1>
+            <p className="text-ink/60 mb-8">컬렉션을 둘러보고 마음에 드는 조명을 담아보세요.</p>
+            <Link to="/products"><Button variant="gold" size="lg">컬렉션 보기</Button></Link>
+          </section>
+        );
+      }
+
+      return (
+        <section className="max-w-7xl mx-auto px-6 py-12">
+          <h1 className="font-serif text-4xl mb-10">장바구니</h1>
+          <div className="grid lg:grid-cols-[1fr_360px] gap-10">
+            <div className="space-y-4">
+              {items.map(it => (
+                <div key={it.id} className="bg-white rounded-2xl shadow-sm p-4 md:p-5 flex gap-5 items-center">
+                  <Link to={`/product/${it.id}`} className="w-20 h-20 md:w-28 md:h-28 flex-shrink-0 overflow-hidden rounded-xl bg-ink/5">
+                    <ImgSafe src={it.image} alt={it.name} className="w-full h-full object-cover" />
+                  </Link>
+                  <div className="flex-1 min-w-0">
+                    <Link to={`/product/${it.id}`} className="font-serif text-lg hover:text-gold-dark block truncate">{it.name}</Link>
+                    <div className="mt-1 text-sm text-ink/60">{fmtKRW(it.price)}</div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <QtyStepper size="sm" value={it.qty} onChange={(q) => updateQty(it.id, q)} />
+                      <button onClick={() => removeFromCart(it.id)} className="text-xs text-ink/40 hover:text-red-600">삭제</button>
+                    </div>
+                  </div>
+                  <div className="hidden sm:block text-right font-medium whitespace-nowrap">
+                    {fmtKRW(it.price * it.qty)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <aside className="h-fit bg-white rounded-2xl shadow-sm p-6 lg:sticky lg:top-24">
+              <div className="font-serif text-xl mb-6">주문 요약</div>
+              <dl className="space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-ink/60">상품금액</dt>
+                  <dd>{fmtKRW(subtotal)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink/60">배송비</dt>
+                  <dd>{shippingFee === 0 ? <span className="text-gold-dark">무료</span> : fmtKRW(shippingFee)}</dd>
+                </div>
+                {shippingFee > 0 && (
+                  <div className="text-xs text-ink/45 pt-1">
+                    {fmtKRW(50000 - subtotal)} 추가 구매 시 무료배송
+                  </div>
+                )}
+              </dl>
+              <div className="my-5 border-t border-ink/10"></div>
+              <div className="flex justify-between items-baseline">
+                <div className="text-ink/60">총 결제금액</div>
+                <div className="font-serif text-2xl">{fmtKRW(total)}</div>
+              </div>
+              <Button variant="primary" size="lg" className="mt-6 w-full" onClick={onCheckout}>
+                결제하기
+              </Button>
+              <Link to="/products" className="mt-3 block text-center text-sm text-ink/50 hover:text-gold-dark">계속 쇼핑하기</Link>
+            </aside>
+          </div>
+        </section>
+      );
+    }
+
+    // ============================================================
+    // 💳 Checkout (TossPayments 결제위젯)
+    // ============================================================
+    function CheckoutPage() {
+      const { items, subtotal, shippingFee, total } = useCart();
+      const [form, setForm] = useState({
+        customer_name: '',
+        customer_phone: '',
+        customer_email: '',
+        shipping_address: '',
+      });
+      const [phase, setPhase] = useState('form'); // 'form' | 'widget'
+      const [order, setOrder] = useState(null);    // { id, toss_order_id, total_amount, ... }
+      const [error, setError] = useState('');
+      const [submitting, setSubmitting] = useState(false);
+      const [paying, setPaying] = useState(false);
+
+      const widgetsRef = useRef(null);
+      const isRenderedRef = useRef(false);
+
+      // Redirect back to cart if empty and we're still on the form step
+      useEffect(() => {
+        if (phase === 'form' && items.length === 0) {
+          navigate('/cart');
+        }
+      }, [phase, items.length]);
+
+      const updateField = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+
+      const onCreateOrder = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        if (!form.customer_name.trim()) return setError('주문자 성함을 입력해주세요.');
+        const phoneDigits = form.customer_phone.replace(/[^0-9]/g, '');
+        if (phoneDigits.length < 9) return setError('연락처를 올바르게 입력해주세요.');
+        if (!form.shipping_address.trim()) return setError('배송지 주소를 입력해주세요.');
+
+        // Normalize phone to digits + hyphens only (server enforces /^[0-9-]+$/).
+        const phoneClean = form.customer_phone.replace(/[^0-9-]/g, '');
+
+        setSubmitting(true);
+        try {
+          const res = await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customer_name: form.customer_name.trim(),
+              customer_phone: phoneClean,
+              customer_email: form.customer_email.trim() || null,
+              shipping_address: form.shipping_address.trim(),
+              items: items.map(it => ({
+                product_id: it.id, name: it.name, price: it.price, qty: it.qty, image: it.image,
+              })),
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            setError(data.message || '주문 생성 중 오류가 발생했습니다.');
+            return;
+          }
+          setOrder(data.data);
+          setPhase('widget');
+        } catch (err) {
+          setError('서버에 연결할 수 없습니다. (' + err.message + ')');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      // Initialize + render TossPayments widget ONCE when we enter 'widget' phase.
+      useEffect(() => {
+        if (phase !== 'widget' || !order) return;
+        if (typeof window.TossPayments !== 'function') {
+          setError('결제 모듈을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+          return;
+        }
+
+        let cancelled = false;
+        (async () => {
+          try {
+            const tossPayments = window.TossPayments(TOSS_CLIENT_KEY);
+            // Anonymous customerKey — no login in this shop.
+            const widgets = tossPayments.widgets({
+              customerKey: window.TossPayments.ANONYMOUS,
+            });
+            if (cancelled) return;
+            widgetsRef.current = widgets;
+
+            await widgets.setAmount({
+              currency: 'KRW',
+              value: Number(order.total_amount),
+            });
+            if (cancelled) return;
+
+            if (!isRenderedRef.current) {
+              await Promise.all([
+                widgets.renderPaymentMethods({
+                  selector: '#payment-method',
+                  variantKey: 'DEFAULT',
+                }),
+                widgets.renderAgreement({
+                  selector: '#agreement',
+                  variantKey: 'AGREEMENT',
+                }),
+              ]);
+              isRenderedRef.current = true;
+            }
+          } catch (err) {
+            console.error('Toss widget init failed:', err);
+            if (!cancelled) setError('결제창을 불러오지 못했습니다. (' + (err.message || 'unknown') + ')');
+          }
+        })();
+
+        return () => { cancelled = true; };
+      }, [phase, order]);
+
+      const onRequestPayment = async () => {
+        if (!widgetsRef.current || !order) return;
+        setError('');
+        setPaying(true);
+        try {
+          const firstName = items[0]?.name || '주문상품';
+          const orderName = items.length > 1
+            ? `${firstName} 외 ${items.length - 1}건`
+            : firstName;
+
+          await widgetsRef.current.requestPayment({
+            orderId: order.toss_order_id,
+            orderName,
+            successUrl: window.location.origin + '/payments/success',
+            failUrl: window.location.origin + '/payments/fail',
+            customerEmail: form.customer_email.trim() || undefined,
+            customerName: form.customer_name.trim(),
+            customerMobilePhone: form.customer_phone.replace(/[^0-9]/g, '') || undefined,
+          });
+          // On success Toss redirects; this line is unlikely to run.
+        } catch (err) {
+          // Includes USER_CANCEL, INVALID_CARD_COMPANY, etc.
+          if (err.code === 'USER_CANCEL') {
+            setError('결제가 취소되었습니다.');
+          } else {
+            setError(err.message || '결제 요청 중 오류가 발생했습니다.');
+          }
+          setPaying(false);
+        }
+      };
+
+      if (phase === 'form' && items.length === 0) {
+        return null; // redirect effect will handle
+      }
+
+      return (
+        <section className="max-w-5xl mx-auto px-6 py-12">
+          <h1 className="font-serif text-4xl mb-3">결제</h1>
+          <p className="text-ink/60 mb-10">
+            {phase === 'form'
+              ? '주문자 정보와 배송지를 입력해주세요.'
+              : '결제 수단을 선택하고 약관에 동의해주세요.'}
+          </p>
+
+          <div className="grid lg:grid-cols-[1fr_360px] gap-10">
+            <div className="space-y-6">
+              {phase === 'form' && (
+                <form onSubmit={onCreateOrder} className="bg-white rounded-2xl shadow-sm p-6 space-y-5">
+                  <div className="font-serif text-xl mb-2">주문자 정보</div>
+                  <Field label="성함" required>
+                    <input type="text" value={form.customer_name} onChange={updateField('customer_name')}
+                      className="w-full px-4 py-3 rounded-xl border border-ink/15 focus:border-gold focus:ring-2 focus:ring-gold/20 outline-none"
+                      placeholder="홍길동" autoComplete="name" />
+                  </Field>
+                  <Field label="연락처" required>
+                    <input type="tel" value={form.customer_phone} onChange={updateField('customer_phone')}
+                      className="w-full px-4 py-3 rounded-xl border border-ink/15 focus:border-gold focus:ring-2 focus:ring-gold/20 outline-none"
+                      placeholder="010-1234-5678" autoComplete="tel" />
+                  </Field>
+                  <Field label="이메일">
+                    <input type="email" value={form.customer_email} onChange={updateField('customer_email')}
+                      className="w-full px-4 py-3 rounded-xl border border-ink/15 focus:border-gold focus:ring-2 focus:ring-gold/20 outline-none"
+                      placeholder="you@example.com" autoComplete="email" />
+                  </Field>
+                  <Field label="배송지 주소" required>
+                    <textarea value={form.shipping_address} onChange={updateField('shipping_address')}
+                      rows={3}
+                      className="w-full px-4 py-3 rounded-xl border border-ink/15 focus:border-gold focus:ring-2 focus:ring-gold/20 outline-none resize-none"
+                      placeholder="서울특별시 ○○구 ○○로 123, 101동 1001호" autoComplete="street-address" />
+                  </Field>
+
+                  {error && (
+                    <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="pt-2">
+                    <Button variant="primary" size="lg" className="w-full" disabled={submitting}>
+                      {submitting ? '주문 생성 중…' : '결제 수단 선택으로 이동'}
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              {phase === 'widget' && (
+                <div className="bg-white rounded-2xl shadow-sm p-6 space-y-4">
+                  <div className="font-serif text-xl">결제 수단</div>
+                  <div id="payment-method"></div>
+                  <div className="font-serif text-xl mt-2">약관 동의</div>
+                  <div id="agreement"></div>
+
+                  {error && (
+                    <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="pt-2 flex flex-col sm:flex-row gap-3">
+                    <Button variant="primary" size="lg" className="flex-1" onClick={onRequestPayment} disabled={paying}>
+                      {paying ? '결제창 이동 중…' : `${fmtKRW(Number(order?.total_amount || total))} 결제하기`}
+                    </Button>
+                    <Button variant="secondary" size="lg" onClick={() => navigate('/cart')} disabled={paying}>
+                      장바구니로 돌아가기
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <aside className="h-fit bg-white rounded-2xl shadow-sm p-6 lg:sticky lg:top-24">
+              <div className="font-serif text-xl mb-5">주문 요약</div>
+              <ul className="space-y-3 mb-5">
+                {items.map(it => (
+                  <li key={it.id} className="flex gap-3 items-center text-sm">
+                    <div className="w-12 h-12 flex-shrink-0 rounded-lg overflow-hidden bg-ink/5">
+                      <ImgSafe src={it.image} alt={it.name} className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate">{it.name}</div>
+                      <div className="text-ink/50">수량 {it.qty}</div>
+                    </div>
+                    <div className="whitespace-nowrap">{fmtKRW(it.price * it.qty)}</div>
+                  </li>
+                ))}
+              </ul>
+              <dl className="space-y-2 text-sm border-t border-ink/10 pt-4">
+                <div className="flex justify-between">
+                  <dt className="text-ink/60">상품금액</dt>
+                  <dd>{fmtKRW(subtotal)}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-ink/60">배송비</dt>
+                  <dd>{shippingFee === 0 ? <span className="text-gold-dark">무료</span> : fmtKRW(shippingFee)}</dd>
+                </div>
+              </dl>
+              <div className="my-4 border-t border-ink/10"></div>
+              <div className="flex justify-between items-baseline">
+                <div className="text-ink/60">총 결제금액</div>
+                <div className="font-serif text-2xl">{fmtKRW(Number(order?.total_amount || total))}</div>
+              </div>
+              {order && (
+                <div className="mt-4 text-xs text-ink/40">
+                  주문번호 #{order.id}
+                </div>
+              )}
+            </aside>
+          </div>
+        </section>
+      );
+    }
+
+    function Field({ label, required, children }) {
+      return (
+        <label className="block">
+          <span className="block text-sm text-ink/70 mb-2">
+            {label}{required && <span className="text-red-500 ml-1">*</span>}
+          </span>
+          {children}
+        </label>
+      );
+    }
+
+    // ============================================================
+    // ✅ Payment Success / Fail
+    // ============================================================
+    function PaymentSuccessPage() {
+      const { query } = useRouter();
+      const { clearCart } = useCart();
+      const [status, setStatus] = useState('confirming'); // 'confirming' | 'ok' | 'error'
+      const [message, setMessage] = useState('');
+      const [data, setData] = useState(null);
+      const ranRef = useRef(false);
+
+      useEffect(() => {
+        if (ranRef.current) return;
+        ranRef.current = true;
+
+        const { paymentKey, orderId, amount } = query;
+        if (!paymentKey || !orderId || !amount) {
+          setStatus('error');
+          setMessage('필수 결제 정보가 누락되었습니다.');
+          return;
+        }
+
+        (async () => {
+          try {
+            const res = await fetch('/api/payments/confirm', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ paymentKey, orderId, amount: Number(amount) }),
+            });
+            const json = await res.json();
+            if (res.ok && json.success) {
+              setData(json.data);
+              setStatus('ok');
+              // Only clear cart AFTER confirmed.
+              clearCart();
+            } else {
+              setStatus('error');
+              setMessage(json.message || '결제 승인에 실패했습니다.');
+            }
+          } catch (err) {
+            setStatus('error');
+            setMessage('서버와 통신할 수 없습니다. (' + err.message + ')');
+          }
+        })();
+      }, []);
+
+      if (status === 'confirming') {
+        return (
+          <section className="max-w-xl mx-auto px-6 py-24 text-center">
+            <div className="text-5xl mb-5">⏳</div>
+            <h1 className="font-serif text-3xl mb-3">결제 승인 처리 중…</h1>
+            <p className="text-ink/60">잠시만 기다려주세요.</p>
+          </section>
+        );
+      }
+
+      if (status === 'error') {
+        return (
+          <section className="max-w-xl mx-auto px-6 py-24 text-center">
+            <div className="text-5xl mb-5">⚠️</div>
+            <h1 className="font-serif text-3xl mb-3">결제 승인 실패</h1>
+            <p className="text-ink/60 mb-8">{message}</p>
+            <div className="flex justify-center gap-3">
+              <Link to="/cart"><Button variant="secondary" size="lg">장바구니로</Button></Link>
+              <Link to="/"><Button variant="primary" size="lg">홈으로</Button></Link>
+            </div>
+          </section>
+        );
+      }
+
+      const order = data?.order;
+      return (
+        <section className="max-w-xl mx-auto px-6 py-20 text-center">
+          <div className="text-5xl mb-5">✨</div>
+          <h1 className="font-serif text-4xl mb-3">결제가 완료되었습니다</h1>
+          <p className="text-ink/60 mb-10">
+            LUMIÈRE를 찾아주셔서 감사합니다.<br />
+            주문하신 조명을 정성껏 준비해 보내드릴게요.
+          </p>
+          {order && (
+            <div className="bg-white rounded-2xl shadow-sm p-6 text-left text-sm space-y-2 mb-10">
+              <div className="flex justify-between">
+                <span className="text-ink/50">주문번호</span>
+                <span>#{order.id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-ink/50">결제금액</span>
+                <span className="font-serif text-lg">{fmtKRW(Number(order.total_amount))}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-ink/50">주문자</span>
+                <span>{order.customer_name}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-ink/50 whitespace-nowrap">배송지</span>
+                <span className="text-right">{order.shipping_address}</span>
+              </div>
+            </div>
+          )}
+          <div className="flex justify-center gap-3">
+            <Link to="/products"><Button variant="secondary" size="lg">계속 쇼핑하기</Button></Link>
+            <Link to="/"><Button variant="primary" size="lg">홈으로</Button></Link>
+          </div>
+        </section>
+      );
+    }
+
+    function PaymentFailPage() {
+      const { query } = useRouter();
+      const code = query.code || 'UNKNOWN';
+      const message = query.message || '결제에 실패했습니다.';
+      return (
+        <section className="max-w-xl mx-auto px-6 py-24 text-center">
+          <div className="text-5xl mb-5">😔</div>
+          <h1 className="font-serif text-3xl mb-3">결제에 실패했습니다</h1>
+          <p className="text-ink/70 mb-2">{decodeURIComponent(message)}</p>
+          <p className="text-xs text-ink/40 mb-10">오류 코드: {code}</p>
+          <div className="flex justify-center gap-3">
+            <Link to="/cart"><Button variant="secondary" size="lg">장바구니로</Button></Link>
+            <Link to="/checkout"><Button variant="primary" size="lg">다시 시도</Button></Link>
+          </div>
+        </section>
+      );
+    }
+
+    function AboutPage() {
+      return (
+        <section className="max-w-3xl mx-auto px-6 py-16 md:py-20">
+          <div className="text-xs tracking-[0.25em] uppercase text-gold-dark">Our Story</div>
+          <h1 className="font-serif text-4xl md:text-5xl mt-3 leading-tight">단 하나의 빛을<br />골라 드립니다</h1>
+
+          <div className="mt-12 aspect-[3/2] overflow-hidden rounded-2xl">
+            <ImgSafe src="https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?w=1024&q=80&auto=format&fit=crop" alt="" className="w-full h-full object-cover" />
+          </div>
+
+          <div className="mt-12 space-y-6 text-ink/80 leading-relaxed">
+            <p>
+              <strong className="font-serif text-ink">LUMIÈRE</strong>는 2024년 서울에서 시작된 조명 큐레이션 스토어입니다.
+              "좋은 빛 하나가 공간 전체의 공기를 바꾼다"는 믿음으로, 전 세계 디자이너와 제조사 수백 곳 중에서 우리가 직접 사용해보고
+              진심으로 좋았던 제품만 소개합니다.
+            </p>
+            <p>
+              우리는 카탈로그가 가득 찬 매장이 아니라, 신뢰할 수 있는 큐레이터 친구에 가까운 스토어가 되기를 바랐습니다.
+              그래서 컬렉션은 매달 단 <strong>8~12개</strong>의 제품으로만 유지합니다. 수가 적은 대신, 각각이 공간과 계절, 조도 범위까지 고려해
+              자신 있게 추천할 수 있는 것들입니다.
+            </p>
+            <p>
+              모든 제품은 직접 점등해 색온도와 확산 패턴을 확인한 뒤에만 컬렉션에 추가됩니다. 조립·설치가 까다로운 제품은
+              무상 설치 서비스로 함께 해결해 드리고, 사용 중 발생하는 전기·내구성 이슈는 1년간 무상 A/S로 책임집니다.
+            </p>
+            <p>
+              완벽한 공간은 완벽한 가구로 만들어지지 않습니다. 오히려 해가 진 뒤 켜지는 단 하나의 따뜻한 불빛이 그 공간을 집으로 만들어 줍니다.
+              당신의 공간을 완성할 그 빛, LUMIÈRE가 찾아 드릴게요.
+            </p>
+          </div>
+
+          <div className="mt-14 text-center">
+            <Link to="/products"><Button variant="gold" size="lg">컬렉션 둘러보기</Button></Link>
+          </div>
+        </section>
+      );
+    }
+
+    // ============================================================
+    // 🚀 App
+    // ============================================================
+    function Routes() {
+      const { path } = useRouter();
+      if (path === '/' || path === '') return <HomePage />;
+      if (path === '/products') return <ProductsPage />;
+      if (matchRoute('/product/:id', path)) return <ProductDetailPage />;
+      if (path === '/cart') return <CartPage />;
+      if (path === '/checkout') return <CheckoutPage />;
+      if (path === '/payments/success') return <PaymentSuccessPage />;
+      if (path === '/payments/fail') return <PaymentFailPage />;
+      if (path === '/about') return <AboutPage />;
+      return (
+        <section className="max-w-4xl mx-auto px-6 py-24 text-center">
+          <div className="font-serif text-3xl mb-3">페이지를 찾을 수 없습니다</div>
+          <Link to="/" className="text-gold-dark hover:underline">홈으로 돌아가기</Link>
+        </section>
+      );
+    }
+
+    function App() {
+      return (
+        <Router>
+          <CartProvider>
+            <div className="min-h-screen flex flex-col">
+              <Header />
+              <main className="flex-1">
+                <Routes />
+              </main>
+              <Footer />
+            </div>
+          </CartProvider>
+        </Router>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "memo-app",
+  "version": "1.0.0",
+  "description": "간단한 메모장 앱",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.20.0"
+  }
+}

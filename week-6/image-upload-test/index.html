@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ImageKit 업로드 테스트</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useRef, useEffect, useCallback } = React;
+
+    const API_BASE_URL = '/api';
+
+    // ---------- Design System ----------
+    const Button = ({ children, onClick, disabled, variant = 'primary', type = 'button', className = '' }) => {
+      const base =
+        'inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
+      const styles = {
+        primary: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500',
+        secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus:ring-slate-400',
+        ghost: 'bg-transparent text-slate-600 hover:bg-slate-100 focus:ring-slate-300',
+        danger: 'bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-500',
+      };
+      return (
+        <button
+          type={type}
+          onClick={onClick}
+          disabled={disabled}
+          className={`${base} ${styles[variant]} ${className}`}
+        >
+          {children}
+        </button>
+      );
+    };
+
+    const Card = ({ children, className = '' }) => (
+      <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 ${className}`}>
+        {children}
+      </div>
+    );
+
+    // ---------- Utilities ----------
+    const formatBytes = (bytes) => {
+      if (!Number.isFinite(bytes)) return '-';
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    };
+
+    // ---------- Upload helper (per imagekit-uploader spec) ----------
+    async function uploadToImageKit(file, { folder = '/' } = {}) {
+      const authRes = await fetch(`${API_BASE_URL}/imagekit-auth`);
+      const authJson = await authRes.json();
+      if (!authJson.success) throw new Error(authJson.message || '인증 실패');
+      const { token, expire, signature, publicKey } = authJson.data;
+
+      const form = new FormData();
+      form.append('file', file);
+      form.append('fileName', file.name);
+      form.append('publicKey', publicKey);
+      form.append('token', token);
+      form.append('expire', String(expire));
+      form.append('signature', signature);
+      form.append('useUniqueFileName', 'true');
+      if (folder) form.append('folder', folder);
+
+      const uploadRes = await fetch('https://upload.imagekit.io/api/v1/files/upload', {
+        method: 'POST',
+        body: form,
+      });
+      const uploadJson = await uploadRes.json();
+      if (!uploadRes.ok) {
+        throw new Error(uploadJson.message || `업로드 실패 (${uploadRes.status})`);
+      }
+      return uploadJson;
+    }
+
+    // ---------- Main App ----------
+    const App = () => {
+      const [file, setFile] = useState(null);
+      const [previewUrl, setPreviewUrl] = useState(null);
+      const [uploading, setUploading] = useState(false);
+      const [uploadedUrl, setUploadedUrl] = useState(null);
+      const [uploadError, setUploadError] = useState(null);
+      const [isDragging, setIsDragging] = useState(false);
+      const [copied, setCopied] = useState(false);
+      const inputRef = useRef(null);
+
+      // Cleanup preview object URL
+      useEffect(() => {
+        return () => {
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+        };
+      }, [previewUrl]);
+
+      const acceptFile = (f) => {
+        if (!f) return;
+        if (!f.type.startsWith('image/')) {
+          setUploadError('이미지 파일만 업로드할 수 있습니다.');
+          return;
+        }
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setFile(f);
+        setPreviewUrl(URL.createObjectURL(f));
+        setUploadedUrl(null);
+        setUploadError(null);
+        setCopied(false);
+      };
+
+      const onInputChange = (e) => {
+        const f = e.target.files && e.target.files[0];
+        acceptFile(f);
+      };
+
+      const onDrop = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const f = e.dataTransfer.files && e.dataTransfer.files[0];
+        acceptFile(f);
+      }, [previewUrl]);
+
+      const onDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+      };
+      const onDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+      };
+
+      const handlePickClick = () => {
+        inputRef.current && inputRef.current.click();
+      };
+
+      const handleReset = () => {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        setFile(null);
+        setPreviewUrl(null);
+        setUploadedUrl(null);
+        setUploadError(null);
+        setUploading(false);
+        setCopied(false);
+        if (inputRef.current) inputRef.current.value = '';
+      };
+
+      const handleUpload = async () => {
+        if (!file) return;
+        setUploading(true);
+        setUploadError(null);
+        setUploadedUrl(null);
+        try {
+          const result = await uploadToImageKit(file, { folder: '/image-upload-test' });
+          setUploadedUrl(result.url);
+        } catch (err) {
+          setUploadError(err.message || '알 수 없는 오류가 발생했습니다.');
+        } finally {
+          setUploading(false);
+        }
+      };
+
+      const handleCopy = async () => {
+        if (!uploadedUrl) return;
+        try {
+          await navigator.clipboard.writeText(uploadedUrl);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        } catch (_err) {
+          setCopied(false);
+        }
+      };
+
+      const uploadDisabled = !file || uploading || Boolean(uploadedUrl);
+
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-10">
+          <header className="mb-8">
+            <h1 className="text-3xl font-bold text-slate-900">ImageKit 업로드 테스트</h1>
+            <p className="text-slate-500 mt-2">
+              이미지를 드래그하거나 선택해서 ImageKit에 직접 업로드해 보세요.
+            </p>
+          </header>
+
+          <Card className="p-6">
+            {/* Drop zone */}
+            <div
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onClick={handlePickClick}
+              role="button"
+              tabIndex={0}
+              aria-label="이미지 파일 선택 또는 드래그"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handlePickClick();
+                }
+              }}
+              className={`cursor-pointer rounded-xl border-2 border-dashed transition-colors p-8 text-center
+                ${isDragging ? 'border-indigo-500 bg-indigo-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'}`}
+            >
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/*"
+                onChange={onInputChange}
+                className="hidden"
+              />
+              <div className="flex flex-col items-center gap-2">
+                <div className="w-12 h-12 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-2xl" aria-hidden="true">
+                  ↑
+                </div>
+                <p className="text-slate-700 font-medium">
+                  이미지를 여기에 드래그하거나 클릭해서 선택하세요
+                </p>
+                <p className="text-xs text-slate-500">PNG, JPG, GIF, WebP 등 image/* 형식</p>
+              </div>
+            </div>
+
+            {/* Preview + info */}
+            {file && (
+              <div className="mt-6 flex flex-col sm:flex-row gap-4 items-start">
+                <div className="w-full sm:w-40 h-40 rounded-lg overflow-hidden bg-slate-100 flex items-center justify-center border border-slate-200 shrink-0">
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="미리보기" className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-slate-400 text-sm">미리보기 없음</span>
+                  )}
+                </div>
+                <dl className="text-sm text-slate-700 space-y-1 flex-1 min-w-0">
+                  <div className="flex gap-2">
+                    <dt className="text-slate-500 w-16 shrink-0">이름</dt>
+                    <dd className="truncate font-medium" title={file.name}>{file.name}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="text-slate-500 w-16 shrink-0">크기</dt>
+                    <dd>{formatBytes(file.size)}</dd>
+                  </div>
+                  <div className="flex gap-2">
+                    <dt className="text-slate-500 w-16 shrink-0">타입</dt>
+                    <dd>{file.type || '알 수 없음'}</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="mt-6 flex flex-wrap gap-2 justify-end">
+              <Button variant="secondary" onClick={handleReset} disabled={!file && !uploadedUrl && !uploadError}>
+                초기화
+              </Button>
+              <Button onClick={handleUpload} disabled={uploadDisabled}>
+                {uploading ? '업로드 중...' : uploadedUrl ? '업로드 완료' : '업로드'}
+              </Button>
+            </div>
+
+            {/* Success banner */}
+            {uploadedUrl && (
+              <div className="mt-6 rounded-lg bg-emerald-50 border border-emerald-200 p-4">
+                <div className="flex items-center gap-2 text-emerald-800 font-semibold">
+                  <span aria-hidden="true">✓</span>
+                  <span>업로드 성공!</span>
+                </div>
+                <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center">
+                  <a
+                    href={uploadedUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="text-emerald-700 underline break-all hover:text-emerald-900 text-sm flex-1 min-w-0"
+                  >
+                    {uploadedUrl}
+                  </a>
+                  <Button variant="secondary" onClick={handleCopy}>
+                    {copied ? '복사됨!' : 'URL 복사'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Error banner */}
+            {uploadError && (
+              <div className="mt-6 rounded-lg bg-rose-50 border border-rose-200 p-4">
+                <div className="flex items-center gap-2 text-rose-800 font-semibold">
+                  <span aria-hidden="true">!</span>
+                  <span>업로드 실패</span>
+                </div>
+                <p className="mt-2 text-sm text-rose-700 break-words">{uploadError}</p>
+              </div>
+            )}
+          </Card>
+
+          <footer className="mt-8 text-center text-xs text-slate-400">
+            서명 발급은 <code className="bg-slate-200 text-slate-700 px-1 rounded">/api/imagekit-auth</code>에서,
+            업로드는 <code className="bg-slate-200 text-slate-700 px-1 rounded">upload.imagekit.io</code>로 직접 전송됩니다.
+          </footer>
+        </div>
+      );
+    };
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
