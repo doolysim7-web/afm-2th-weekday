@@ -23,9 +23,39 @@
 
     const API_BASE_URL = '/api';
 
+    // Resolve a stored image URL into something the browser can always load.
+    // Some legacy URLs contain NFD Hangul (macOS filenames) that ImageKit
+    // serves only when fetched with the exact NFD bytes. To avoid environment-
+    // specific URL normalization (Vercel CDN, non-macOS browsers), route any
+    // non-ASCII URL through the server-side image proxy.
+    function resolveImageSrc(url) {
+      if (!url) return url;
+      const isAscii = /^[\x00-\x7F]*$/.test(url);
+      if (isAscii) return url;
+      return `${API_BASE_URL}/image-proxy?url=${encodeURIComponent(url)}`;
+    }
+
     // ========================================
     // 🛰 ImageKit Uploader
     // ========================================
+
+    // Sanitize filename so the resulting ImageKit URL is ASCII-only.
+    // macOS uses NFD (decomposed) Hangul in filenames — when the URL is
+    // requested from a different environment that normalizes to NFC, the
+    // path no longer matches what ImageKit stored and returns 404.
+    function sanitizeFileName(name) {
+      const dot = name.lastIndexOf('.');
+      const base = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : '';
+      const safeBase =
+        base
+          .normalize('NFC')
+          .replace(/[^A-Za-z0-9._-]+/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '') || 'file';
+      const safeExt = ext.replace(/[^A-Za-z0-9.]+/g, '');
+      return safeBase + safeExt;
+    }
 
     async function uploadToImageKit(file, { folder = '/memo-app' } = {}) {
       const authRes = await fetch(`${API_BASE_URL}/imagekit-auth`);
@@ -35,7 +65,7 @@
 
       const form = new FormData();
       form.append('file', file);
-      form.append('fileName', file.name);
+      form.append('fileName', sanitizeFileName(file.name));
       form.append('publicKey', publicKey);
       form.append('token', token);
       form.append('expire', String(expire));
@@ -249,6 +279,7 @@
       const [imageUrl, setImageUrl] = useState(memo?.image_url || null);
       const [imageUploading, setImageUploading] = useState(false);
       const [imageError, setImageError] = useState(null);
+      const [imageLoadFailed, setImageLoadFailed] = useState(false);
       const fileInputRef = useRef(null);
 
       useEffect(() => {
@@ -256,8 +287,14 @@
         setContent(memo?.content || '');
         setImageUrl(memo?.image_url || null);
         setImageError(null);
+        setImageLoadFailed(false);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }, [memo?.id]);
+
+      // Reset broken-image state whenever the URL changes (e.g. re-upload).
+      useEffect(() => {
+        setImageLoadFailed(false);
+      }, [imageUrl]);
 
       const dirty =
         (memo?.title || '') !== title ||
@@ -358,12 +395,22 @@
               />
               {imageUrl ? (
                 <div className="space-y-2">
-                  <div className="rounded-lg overflow-hidden bg-slate-100 border border-slate-200">
+                  <div className="rounded-lg overflow-hidden bg-slate-100 border border-slate-200 relative">
                     <img
-                      src={imageUrl}
+                      src={resolveImageSrc(imageUrl)}
                       alt="첨부 이미지"
-                      className="w-full max-h-80 object-contain bg-slate-50"
+                      onLoad={() => setImageLoadFailed(false)}
+                      onError={() => setImageLoadFailed(true)}
+                      className={`w-full max-h-80 object-contain bg-slate-50 ${imageLoadFailed ? 'opacity-30' : ''}`}
                     />
+                    {imageLoadFailed && (
+                      <div className="absolute inset-0 flex items-center justify-center text-center px-4">
+                        <p className="text-sm text-red-600 bg-white/80 rounded-lg px-3 py-2">
+                          이미지 로드 실패 — 파일명에 한글/특수문자가 포함된 이전 업로드일 수 있습니다.<br/>
+                          <span className="text-xs text-slate-500">"변경" 버튼으로 다시 업로드해 주세요.</span>
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center justify-between gap-2">
                     <a

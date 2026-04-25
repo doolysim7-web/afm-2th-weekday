@@ -86,6 +86,42 @@ app.get('/api/health', (_req, res) => {
   res.json({ success: true, data: { status: 'ok' } });
 });
 
+// Image proxy — fetches an arbitrary image URL server-side and streams it back.
+// Existing memos may store URLs with NFD-encoded Hangul (macOS filenames) that
+// some environments normalize to NFC and fail to load. Going through the server
+// avoids browser/CDN URL-normalization mismatches entirely.
+app.get('/api/image-proxy', async (req, res) => {
+  try {
+    const target = req.query.url;
+    if (!target || typeof target !== 'string') {
+      return res.status(400).send('missing url');
+    }
+    // Only allow ImageKit URLs to avoid being used as an open proxy.
+    let parsed;
+    try {
+      parsed = new URL(target);
+    } catch {
+      return res.status(400).send('invalid url');
+    }
+    if (!/(^|\.)imagekit\.io$/i.test(parsed.hostname)) {
+      return res.status(400).send('host not allowed');
+    }
+
+    const upstream = await fetch(target);
+    if (!upstream.ok) {
+      return res.status(upstream.status).send(`upstream ${upstream.status}`);
+    }
+    const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(buf);
+  } catch (err) {
+    console.error('[GET /api/image-proxy]', err);
+    res.status(502).send('proxy error');
+  }
+});
+
 // ImageKit client-upload auth
 app.get('/api/imagekit-auth', (_req, res) => {
   try {
