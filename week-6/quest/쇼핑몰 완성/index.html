@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>✏️ 문구네 — 매일 쓰는 문구류</title>
+  <!-- TossPayments 결제 위젯 SDK v2 -->
+  <script src="https://js.tosspayments.com/v2/standard"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+      background: #fafaf7;
+      min-height: 100vh;
+      color: #2d3748;
+    }
+    .app { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+    header {
+      background: white;
+      border-radius: 14px;
+      padding: 16px 24px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 22px;
+      gap: 16px;
+    }
+    header h1 {
+      font-size: 1.35rem;
+      cursor: pointer;
+      user-select: none;
+      letter-spacing: -0.5px;
+    }
+    .nav { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .user-area { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; }
+    .username { font-weight: 600; color: #2f855a; }
+    .role-badge {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      border-radius: 6px;
+      margin-left: 4px;
+      font-weight: 700;
+    }
+
+    .btn {
+      padding: 9px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #38a169; color: white; }
+    .btn-primary:hover { background: #2f855a; }
+    .btn-primary:disabled { background: #cbd5e0; cursor: not-allowed; }
+    .btn-ghost { background: #edf2f7; color: #4a5568; }
+    .btn-ghost:hover { background: #e2e8f0; }
+    .btn-danger { background: #fed7d7; color: #c53030; }
+    .btn-danger:hover { background: #feb2b2; }
+    .btn-warn { background: #fed7aa; color: #9a3412; }
+    .btn-warn:hover { background: #fdba74; }
+    .btn-icon {
+      width: 30px; height: 30px; padding: 0;
+      border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 1.05rem;
+      background: #edf2f7; color: #2d3748;
+      border: none; cursor: pointer;
+    }
+    .btn-icon:hover { background: #e2e8f0; }
+    .btn-icon:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-link {
+      background: none; border: none;
+      color: #38a169; font-weight: 700; font-size: 0.95rem;
+      cursor: pointer; padding: 4px 6px;
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    .btn-link:hover { color: #2f855a; }
+
+    .cart-btn { position: relative; padding: 8px 14px 8px 12px; }
+    .cart-badge {
+      position: absolute;
+      top: -6px; right: -6px;
+      background: #e53e3e; color: white;
+      font-size: 0.72rem; font-weight: 700;
+      min-width: 20px; height: 20px;
+      padding: 0 6px;
+      border-radius: 999px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 26px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    h2 { font-size: 1.15rem; margin-bottom: 18px; color: #2d3748; }
+    form { display: grid; gap: 14px; }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      margin-bottom: 4px;
+      font-weight: 600;
+      color: #4a5568;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: inherit;
+    }
+    textarea { resize: vertical; min-height: 80px; }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #38a169;
+      box-shadow: 0 0 0 3px rgba(56,161,105,0.15);
+    }
+    .auth-wrap { max-width: 420px; margin: 40px auto 0; }
+    .auth-switch {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #edf2f7;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #718096;
+    }
+
+    .msg {
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+    }
+    .msg-error { background: #fed7d7; color: #742a2a; }
+    .msg-success { background: #c6f6d5; color: #22543d; }
+    .msg-info { background: #e2e8f0; color: #2d3748; }
+
+    .section-title {
+      font-size: 1.6rem;
+      font-weight: 800;
+      margin-bottom: 6px;
+      letter-spacing: -0.6px;
+    }
+    .section-sub { color: #718096; font-size: 0.95rem; margin-bottom: 20px; }
+    .product-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 18px;
+    }
+    .product-card {
+      background: white;
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .product-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 22px rgba(0,0,0,0.10);
+    }
+    .product-thumb {
+      height: 160px;
+      background: linear-gradient(135deg, #f0fff4 0%, #fefcbf 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 4.5rem;
+      overflow: hidden;
+      position: relative;
+    }
+    .product-thumb img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .product-body {
+      padding: 14px 16px 16px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .product-name {
+      font-weight: 700;
+      font-size: 1rem;
+      line-height: 1.35;
+      color: #1a202c;
+      min-height: 2.7em;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .product-desc {
+      color: #718096;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      min-height: 2.4em;
+    }
+    .product-price {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #2d3748;
+      margin-top: 4px;
+    }
+    .product-actions { margin-top: 8px; display: flex; gap: 6px; }
+    .product-actions .btn { flex: 1; }
+
+    .cart-list { display: grid; gap: 12px; }
+    .cart-item {
+      display: grid;
+      grid-template-columns: 74px 1fr auto;
+      gap: 14px;
+      padding: 14px;
+      border: 1px solid #edf2f7;
+      border-radius: 12px;
+      align-items: center;
+    }
+    .cart-thumb {
+      width: 74px; height: 74px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #f0fff4 0%, #fefcbf 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.2rem;
+      overflow: hidden;
+    }
+    .cart-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .cart-info .name {
+      font-weight: 700; color: #1a202c;
+      font-size: 0.98rem; margin-bottom: 2px;
+    }
+    .cart-info .unit {
+      color: #718096; font-size: 0.85rem; margin-bottom: 6px;
+    }
+    .qty-control { display: inline-flex; align-items: center; gap: 6px; }
+    .qty-value {
+      min-width: 28px; text-align: center;
+      font-weight: 700; font-size: 0.95rem;
+    }
+    .cart-side {
+      display: flex; flex-direction: column; align-items: flex-end;
+      gap: 10px;
+    }
+    .line-total { font-weight: 800; color: #2d3748; }
+    .cart-summary {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 2px dashed #edf2f7;
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px;
+    }
+    .cart-summary .label { font-size: 0.95rem; color: #4a5568; font-weight: 600; }
+    .cart-summary .total {
+      font-size: 1.6rem; font-weight: 800; color: #2f855a;
+      letter-spacing: -0.5px;
+    }
+    .cart-cta {
+      margin-top: 18px;
+      display: flex; gap: 10px; justify-content: flex-end;
+    }
+
+    .empty {
+      text-align: center;
+      color: #a0aec0;
+      padding: 60px 20px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    .empty-emoji { font-size: 3rem; margin-bottom: 10px; }
+    .empty .btn { margin-top: 16px; }
+
+    .toast {
+      position: fixed;
+      bottom: 24px; left: 50%;
+      transform: translateX(-50%);
+      background: #2d3748; color: white;
+      padding: 10px 20px; border-radius: 999px;
+      font-size: 0.9rem; font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      opacity: 0; transition: opacity 0.25s;
+      pointer-events: none;
+      z-index: 9999;
+    }
+    .toast.show { opacity: 1; }
+
+    /* Admin */
+    .admin-grid {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 760px) { .admin-grid { grid-template-columns: 1fr; } }
+
+    .admin-list {
+      max-height: 580px; overflow-y: auto;
+      display: grid; gap: 8px;
+    }
+    .admin-list-item {
+      display: grid;
+      grid-template-columns: 60px 1fr auto;
+      gap: 10px;
+      padding: 8px;
+      border: 1px solid #edf2f7;
+      border-radius: 10px;
+      align-items: center;
+    }
+    .admin-thumb {
+      width: 60px; height: 60px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #f0fff4 0%, #fefcbf 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem;
+      overflow: hidden;
+    }
+    .admin-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .admin-info .name { font-weight: 700; font-size: 0.95rem; }
+    .admin-info .price { color: #2f855a; font-weight: 700; font-size: 0.85rem; }
+    .admin-info .desc {
+      color: #718096; font-size: 0.78rem; line-height: 1.3;
+      max-height: 2.6em; overflow: hidden;
+    }
+    .admin-actions { display: flex; flex-direction: column; gap: 4px; }
+    .admin-actions .btn { padding: 5px 8px; font-size: 0.78rem; }
+
+    .dropzone {
+      border: 2px dashed #cbd5e0;
+      border-radius: 10px;
+      padding: 18px;
+      text-align: center;
+      color: #718096;
+      background: #f7fafc;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: #38a169;
+      background: #f0fff4;
+      color: #2f855a;
+    }
+    .dropzone.uploading { pointer-events: none; opacity: 0.7; }
+    .image-preview {
+      margin-top: 10px;
+      max-width: 100%;
+      border-radius: 8px;
+      border: 1px solid #edf2f7;
+      max-height: 220px;
+      object-fit: contain;
+      background: #f7fafc;
+      display: block;
+    }
+    .image-preview-emoji {
+      font-size: 4rem;
+      margin-top: 10px;
+      display: block;
+      text-align: center;
+    }
+
+    /* Checkout */
+    .checkout-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr;
+      gap: 18px;
+    }
+    @media (max-width: 760px) { .checkout-grid { grid-template-columns: 1fr; } }
+    .order-summary-list { display: grid; gap: 10px; margin-bottom: 14px; }
+    .order-summary-item {
+      display: grid; grid-template-columns: 50px 1fr auto;
+      gap: 10px; align-items: center;
+      font-size: 0.9rem;
+    }
+    .order-thumb {
+      width: 50px; height: 50px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #f0fff4 0%, #fefcbf 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem;
+      overflow: hidden;
+    }
+    .order-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* My orders */
+    .order-card {
+      border: 1px solid #edf2f7;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .order-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px; gap: 8px; flex-wrap: wrap;
+    }
+    .order-id { font-weight: 700; font-size: 0.95rem; color: #1a202c; }
+    .order-meta { color: #718096; font-size: 0.82rem; }
+    .order-status {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-confirmed { background: #c6f6d5; color: #22543d; }
+    .status-cancelled { background: #fed7d7; color: #742a2a; }
+    .order-items { font-size: 0.88rem; color: #4a5568; line-height: 1.6; }
+    .order-total {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed #edf2f7;
+      display: flex; justify-content: space-between;
+      font-weight: 800; color: #2f855a;
+    }
+
+    @media (max-width: 640px) {
+      .app { padding: 12px; }
+      header { padding: 12px 16px; flex-wrap: wrap; }
+      header h1 { font-size: 1.1rem; }
+      .product-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+      .product-thumb { height: 130px; font-size: 3.5rem; }
+      .product-body { padding: 12px; }
+      .cart-item { grid-template-columns: 60px 1fr; }
+      .cart-thumb { width: 60px; height: 60px; font-size: 1.8rem; }
+      .cart-side { grid-column: 1 / 3; flex-direction: row; justify-content: space-between; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1 id="homeBtn">✏️ 문구네</h1>
+      <div class="nav" id="navArea"></div>
+    </header>
+
+    <main id="main"></main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- 상품 목록 -->
+  <template id="tpl-products">
+    <div>
+      <div class="section-title">🖊️ 매일 쓰는 문구류</div>
+      <div class="section-sub">자주 찾는 문구류를 한 자리에 모았어요. 로그인하면 장바구니에 담을 수 있어요.</div>
+      <div id="productGrid" class="product-grid"></div>
+    </div>
+  </template>
+
+  <!-- 장바구니 -->
+  <template id="tpl-cart">
+    <div class="card">
+      <h2 style="margin-bottom: 4px;">🛒 내 장바구니</h2>
+      <p style="color:#718096; font-size:0.9rem; margin-bottom:18px;">
+        수량을 변경하거나 상품을 제거할 수 있어요.
+      </p>
+      <div id="cartBody"></div>
+    </div>
+  </template>
+
+  <!-- 결제 페이지 -->
+  <template id="tpl-checkout">
+    <div>
+      <div class="section-title">💳 결제</div>
+      <div class="section-sub">주문자 정보를 입력하고 결제를 진행해주세요.</div>
+      <div id="checkoutMsg"></div>
+      <div class="checkout-grid">
+        <div class="card">
+          <h2>주문 정보</h2>
+          <form id="checkoutForm">
+            <div>
+              <label>주문자 성함 *</label>
+              <input type="text" name="customer_name" required maxlength="50" autocomplete="name" />
+            </div>
+            <div>
+              <label>연락처 *</label>
+              <input type="tel" name="customer_phone" required placeholder="010-1234-5678" autocomplete="tel" />
+            </div>
+            <div>
+              <label>배송지 주소 *</label>
+              <textarea name="shipping_address" required autocomplete="street-address"
+                placeholder="예: 서울특별시 ○○구 ○○로 123, 101동 1001호"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" id="checkoutSubmit">
+              결제 위젯 불러오기
+            </button>
+          </form>
+
+          <div id="paymentArea" style="display:none; margin-top: 22px;">
+            <h2 style="margin-top: 0;">결제 수단 선택</h2>
+            <div id="payment-method"></div>
+            <div id="agreement"></div>
+            <div style="margin-top: 16px;">
+              <button type="button" class="btn btn-primary" id="payNowBtn" style="width:100%;">
+                결제하기
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="height: fit-content;">
+          <h2>주문 요약</h2>
+          <div id="orderSummary"></div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- 결제 성공 -->
+  <template id="tpl-payment-success">
+    <div class="card" style="max-width:600px; margin: 40px auto 0; text-align:center;">
+      <div style="font-size: 4rem; margin-bottom: 12px;">🎉</div>
+      <h2 style="font-size: 1.3rem;">결제가 완료되었습니다!</h2>
+      <div id="paymentSuccessBody" style="margin-top: 18px;"></div>
+    </div>
+  </template>
+
+  <!-- 결제 실패 -->
+  <template id="tpl-payment-fail">
+    <div class="card" style="max-width:600px; margin: 40px auto 0; text-align:center;">
+      <div style="font-size: 4rem; margin-bottom: 12px;">😢</div>
+      <h2 style="font-size: 1.3rem;">결제에 실패했습니다</h2>
+      <div id="paymentFailBody" style="margin-top: 14px; color: #718096;"></div>
+      <div style="margin-top: 18px;">
+        <button class="btn btn-primary" id="retryCart">장바구니로 돌아가기</button>
+      </div>
+    </div>
+  </template>
+
+  <!-- 마이페이지 (주문 내역) -->
+  <template id="tpl-my-orders">
+    <div class="card">
+      <h2 style="margin-bottom: 4px;">📦 내 주문 내역</h2>
+      <p style="color:#718096; font-size:0.9rem; margin-bottom:18px;">
+        결제하신 주문 내역을 확인하실 수 있어요.
+      </p>
+      <div id="ordersBody"></div>
+    </div>
+  </template>
+
+  <!-- 관리자 -->
+  <template id="tpl-admin">
+    <div>
+      <div class="section-title">⚙️ 관리자 — 상품 관리</div>
+      <div class="section-sub">상품을 등록, 수정, 삭제할 수 있어요. 이미지는 ImageKit에 업로드됩니다.</div>
+
+      <div class="admin-grid">
+        <div class="card">
+          <h2 id="adminFormTitle">➕ 상품 등록</h2>
+          <div id="adminMsg"></div>
+          <form id="productForm">
+            <input type="hidden" name="id" />
+            <div>
+              <label>상품명 *</label>
+              <input type="text" name="name" required maxlength="150" />
+            </div>
+            <div>
+              <label>가격 (원) *</label>
+              <input type="number" name="price" required min="0" step="100" />
+            </div>
+            <div>
+              <label>설명</label>
+              <textarea name="description" maxlength="2000"></textarea>
+            </div>
+            <div>
+              <label>상품 이미지</label>
+              <input type="hidden" name="image_url" />
+              <div class="dropzone" id="dropzone">
+                <div id="dropzoneBody">
+                  <div style="font-size: 2rem;">📤</div>
+                  <div style="margin-top: 6px; font-size: 0.9rem; font-weight: 600;">
+                    이미지를 드래그하거나 클릭하여 선택하세요
+                  </div>
+                  <div style="font-size: 0.8rem; color: #a0aec0; margin-top: 4px;">
+                    PNG, JPG, GIF 등 (최대 10MB) — 비워두면 이모지로 표시
+                  </div>
+                </div>
+                <input type="file" id="fileInput" accept="image/*" style="display:none;" />
+              </div>
+              <div id="imagePreviewArea"></div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button type="submit" class="btn btn-primary" style="flex:1;">저장</button>
+              <button type="button" class="btn btn-ghost" id="adminCancel">초기화</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>📦 등록된 상품 (<span id="productCount">0</span>)</h2>
+          <div id="adminList" class="admin-list"></div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- 로그인 -->
+  <template id="tpl-login">
+    <div class="auth-wrap">
+      <div class="card">
+        <h2 style="text-align:center;">🔐 로그인</h2>
+        <div id="authMsg"></div>
+        <form id="loginForm">
+          <div>
+            <label>이메일</label>
+            <input type="email" name="email" required autocomplete="email" />
+          </div>
+          <div>
+            <label>비밀번호</label>
+            <input type="password" name="password" required autocomplete="current-password" />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">로그인</button>
+        </form>
+        <div class="auth-switch">
+          아직 계정이 없으신가요?
+          <button type="button" class="btn-link" id="goRegister">회원가입</button>
+        </div>
+        <div class="auth-switch" style="border-top:none; padding-top:0; margin-top:8px; font-size:0.8rem; color:#a0aec0;">
+          관리자: admin@stationery.shop / admin1234
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- 회원가입 -->
+  <template id="tpl-register">
+    <div class="auth-wrap">
+      <div class="card">
+        <h2 style="text-align:center;">✨ 회원가입</h2>
+        <div id="authMsg"></div>
+        <form id="registerForm">
+          <div>
+            <label>이메일</label>
+            <input type="email" name="email" required autocomplete="email" />
+          </div>
+          <div>
+            <label>이름</label>
+            <input type="text" name="name" required maxlength="30" placeholder="받는 분 이름" />
+          </div>
+          <div>
+            <label>비밀번호 <span style="color:#a0aec0; font-weight:400;">(6자 이상)</span></label>
+            <input type="password" name="password" required minlength="6" autocomplete="new-password" />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;">가입하기</button>
+        </form>
+        <div class="auth-switch">
+          이미 계정이 있으신가요?
+          <button type="button" class="btn-link" id="goLogin">로그인</button>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <script src="client.js"></script>
+</body>
+</html>
