@@ -486,6 +486,7 @@ function viewLogin() {
         body: JSON.stringify({ email: fd.get('email'), password: fd.get('password') }),
       });
       auth.save(data.token, data.user);
+      renderHeader();
       navigate('#/');
       toast(`${data.user.name}님, 환영합니다!`);
     } catch (err) {
@@ -513,6 +514,7 @@ function viewRegister() {
         }),
       });
       auth.save(data.token, data.user);
+      renderHeader();
       showMsg(msgBox, '가입이 완료되었습니다!', 'success');
       setTimeout(() => navigate('#/'), 600);
     } catch (err) {
