@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>한글 → 영문 거래내역서 변환</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://js.tosspayments.com/v2/standard"></script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  .pdf-page { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Helvetica Neue", Arial, sans-serif; }
+  table.preview { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.preview th, table.preview td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top; }
+  table.preview thead th { background: #f3f4f6; font-weight: 600; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+// ----------- Auth + API utils -----------
+function getToken() { return localStorage.getItem('kr2en_token') || ''; }
+function getUser() { try { return JSON.parse(localStorage.getItem('kr2en_user') || 'null'); } catch { return null; } }
+function setSession(token, user) {
+  localStorage.setItem('kr2en_token', token);
+  localStorage.setItem('kr2en_user', JSON.stringify(user));
+}
+function clearSession() {
+  localStorage.removeItem('kr2en_token');
+  localStorage.removeItem('kr2en_user');
+}
+
+async function api(path, { method = 'GET', body, auth = true } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth) {
+    const t = getToken();
+    if (t) headers.Authorization = `Bearer ${t}`;
+  }
+  const resp = await fetch(path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await resp.json(); } catch {}
+  if (!resp.ok || !data?.success) {
+    const msg = data?.message || `요청 실패 (${resp.status})`;
+    if (resp.status === 401) {
+      clearSession();
+      window.location.hash = '#/login';
+    }
+    const err = new Error(msg);
+    err.code = data?.code;
+    throw err;
+  }
+  return data.data;
+}
+
+// ----------- Hash router -----------
+function parseHash() {
+  const h = window.location.hash || '#/upload';
+  const [path, qs] = h.replace(/^#/, '').split('?');
+  const parts = path.split('/').filter(Boolean);
+  const route = '/' + parts.join('/');
+  const params = new URLSearchParams(qs || '');
+  return { route, parts, params };
+}
+
+function useHash() {
+  const [hash, setHash] = useState(parseHash());
+  useEffect(() => {
+    const h = () => setHash(parseHash());
+    window.addEventListener('hashchange', h);
+    return () => window.removeEventListener('hashchange', h);
+  }, []);
+  return hash;
+}
+
+function navigate(to) {
+  if (window.location.hash === '#' + to) {
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  } else {
+    window.location.hash = '#' + to;
+  }
+}
+
+// ----------- Layout -----------
+function Header({ user }) {
+  return (
+    <header className="bg-white border-b border-slate-200">
+      <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <a href="#/upload" className="font-bold text-lg text-slate-900">KR2EN Statement</a>
+        <nav className="flex items-center gap-4 text-sm">
+          {user ? (
+            <>
+              <a href="#/upload" className="text-slate-600 hover:text-slate-900">새 변환</a>
+              <a href="#/history" className="text-slate-600 hover:text-slate-900">구매이력</a>
+              <span className="text-slate-400">|</span>
+              <span className="text-slate-500">{user.email}</span>
+              <button
+                className="text-slate-600 hover:text-slate-900"
+                onClick={() => { clearSession(); navigate('/login'); }}
+              >로그아웃</button>
+            </>
+          ) : (
+            <>
+              <a href="#/login" className="text-slate-600 hover:text-slate-900">로그인</a>
+              <a href="#/register" className="bg-slate-900 text-white px-3 py-1.5 rounded">회원가입</a>
+            </>
+          )}
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+function Card({ children, className = '' }) {
+  return <div className={`bg-white rounded-lg border border-slate-200 shadow-sm ${className}`}>{children}</div>;
+}
+
+function Spinner({ label }) {
+  return (
+    <div className="flex items-center gap-2 text-slate-600 text-sm">
+      <span className="inline-block w-4 h-4 border-2 border-slate-300 border-t-slate-700 rounded-full animate-spin" />
+      <span>{label || '처리 중...'}</span>
+    </div>
+  );
+}
+
+// ----------- Login / Register -----------
+function LoginPage({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const submit = async (e) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try {
+      const { token, user } = await api('/api/auth/login', { method: 'POST', body: { email, password }, auth: false });
+      setSession(token, user); onLogin(user); navigate('/upload');
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="max-w-md mx-auto mt-10 px-4">
+      <Card className="p-6">
+        <h1 className="text-xl font-bold mb-4">로그인</h1>
+        <form onSubmit={submit} className="space-y-3">
+          <input className="w-full border rounded px-3 py-2" type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input className="w-full border rounded px-3 py-2" type="password" placeholder="비밀번호" value={password} onChange={e => setPassword(e.target.value)} required />
+          {err && <div className="text-red-600 text-sm">{err}</div>}
+          <button disabled={busy} className="w-full bg-slate-900 text-white py-2 rounded disabled:opacity-50">{busy ? '로그인 중...' : '로그인'}</button>
+        </form>
+        <p className="text-sm text-slate-500 mt-4">계정이 없으신가요? <a href="#/register" className="text-slate-900 underline">회원가입</a></p>
+      </Card>
+    </div>
+  );
+}
+
+function RegisterPage({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const submit = async (e) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try {
+      const { token, user } = await api('/api/auth/register', {
+        method: 'POST', auth: false,
+        body: { email, password, displayName },
+      });
+      setSession(token, user); onLogin(user); navigate('/upload');
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="max-w-md mx-auto mt-10 px-4">
+      <Card className="p-6">
+        <h1 className="text-xl font-bold mb-4">회원가입</h1>
+        <form onSubmit={submit} className="space-y-3">
+          <input className="w-full border rounded px-3 py-2" type="email" placeholder="이메일" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input className="w-full border rounded px-3 py-2" type="password" placeholder="비밀번호 (6자 이상)" value={password} onChange={e => setPassword(e.target.value)} required />
+          <input className="w-full border rounded px-3 py-2" placeholder="표시 이름 (선택)" value={displayName} onChange={e => setDisplayName(e.target.value)} />
+          {err && <div className="text-red-600 text-sm">{err}</div>}
+          <button disabled={busy} className="w-full bg-slate-900 text-white py-2 rounded disabled:opacity-50">{busy ? '처리 중...' : '회원가입'}</button>
+        </form>
+        <p className="text-sm text-slate-500 mt-4">이미 계정이 있으신가요? <a href="#/login" className="text-slate-900 underline">로그인</a></p>
+      </Card>
+    </div>
+  );
+}
+
+// ----------- Upload -----------
+function UploadPage() {
+  const [mode, setMode] = useState('table'); // table | image
+  const [file, setFile] = useState(null);
+  const [headers, setHeaders] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [title, setTitle] = useState('');
+  const [periodStart, setPeriodStart] = useState('');
+  const [periodEnd, setPeriodEnd] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState('');
+  const [err, setErr] = useState('');
+
+  const onFile = async (f) => {
+    setErr(''); setFile(f); setHeaders([]); setRows([]);
+    if (!f) return;
+    try {
+      const isCsv = /\.csv$/i.test(f.name) || f.type === 'text/csv';
+      let wb;
+      if (isCsv) {
+        const text = await f.text();
+        wb = XLSX.read(text, { type: 'string' });
+      } else {
+        const buf = await f.arrayBuffer();
+        wb = XLSX.read(buf, { type: 'array' });
+      }
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+      const rowsArr = json.filter(r => r.some(c => String(c).trim() !== ''));
+      if (rowsArr.length < 2) throw new Error('빈 파일이거나 데이터가 부족합니다.');
+      setHeaders(rowsArr[0].map(c => String(c)));
+      setRows(rowsArr.slice(1).map(r => r.map(c => String(c))));
+    } catch (e) { setErr('파일 파싱 실패: ' + e.message); }
+  };
+
+  const submitTable = async () => {
+    setErr('');
+    if (!title.trim()) return setErr('제목을 입력해 주세요.');
+    if (headers.length === 0 || rows.length === 0) return setErr('파일을 업로드해 주세요.');
+    setBusy(true); setBusyLabel('업로드 정보 저장 중...');
+    try {
+      const sourceType = file?.name.toLowerCase().endsWith('.csv') ? 'csv' : 'excel';
+      const cv = await api('/api/conversions', {
+        method: 'POST',
+        body: {
+          title, periodStart, periodEnd, sourceType,
+          sourceData: { headers, rows },
+        },
+      });
+      navigate(`/preview/${cv.id}`);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); setBusyLabel(''); }
+  };
+
+  const submitImage = async () => {
+    setErr('');
+    if (!title.trim()) return setErr('제목을 입력해 주세요.');
+    if (!file) return setErr('이미지 파일을 선택해 주세요.');
+    setBusy(true); setBusyLabel('이미지 업로드 중...');
+    try {
+      const auth = await api('/api/imagekit-auth');
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('fileName', file.name || `tx_${Date.now()}.png`);
+      fd.append('publicKey', auth.publicKey);
+      fd.append('signature', auth.signature);
+      fd.append('expire', String(auth.expire));
+      fd.append('token', auth.token);
+      fd.append('useUniqueFileName', 'true');
+      const upResp = await fetch('https://upload.imagekit.io/api/v1/files/upload', { method: 'POST', body: fd });
+      const upData = await upResp.json();
+      if (!upResp.ok) throw new Error('이미지 업로드 실패: ' + (upData?.message || upResp.status));
+      const imageUrl = upData.url;
+
+      setBusyLabel('업로드 정보 저장 중...');
+      const cv = await api('/api/conversions', {
+        method: 'POST',
+        body: {
+          title,
+          periodStart,
+          periodEnd,
+          sourceType: 'image',
+          sourceData: { imageUrl },
+          sourceImageUrl: imageUrl,
+        },
+      });
+      navigate(`/preview/${cv.id}`);
+    } catch (e) { setErr(e.message); }
+    finally { setBusy(false); setBusyLabel(''); }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+      <Card className="p-6">
+        <h1 className="text-xl font-bold mb-1">새 변환</h1>
+        <p className="text-sm text-slate-500 mb-4">엑셀/CSV 또는 거래내역 캡처 이미지를 업로드하면 영어로 변환됩니다.</p>
+
+        <div className="flex gap-2 mb-4">
+          <button
+            className={`px-3 py-1.5 rounded text-sm ${mode === 'table' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}
+            onClick={() => { setMode('table'); setFile(null); setHeaders([]); setRows([]); setErr(''); }}
+          >엑셀 / CSV</button>
+          <button
+            className={`px-3 py-1.5 rounded text-sm ${mode === 'image' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}
+            onClick={() => { setMode('image'); setFile(null); setHeaders([]); setRows([]); setErr(''); }}
+          >이미지</button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <div className="md:col-span-3">
+            <label className="block text-sm text-slate-600 mb-1">제목 (외국 고객에게 보일 문서 제목)</label>
+            <input className="w-full border rounded px-3 py-2" placeholder="Transaction History — Hong Gildong" value={title} onChange={e => setTitle(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 mb-1">기간 시작</label>
+            <input type="date" className="w-full border rounded px-3 py-2" value={periodStart} onChange={e => setPeriodStart(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 mb-1">기간 종료</label>
+            <input type="date" className="w-full border rounded px-3 py-2" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} />
+          </div>
+        </div>
+
+        {mode === 'table' ? (
+          <>
+            <input
+              type="file" accept=".xlsx,.xls,.csv"
+              onChange={(e) => onFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:bg-slate-900 file:text-white file:cursor-pointer"
+            />
+            {headers.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm text-slate-500 mb-2">파싱된 데이터 미리보기 (한국어 원본):</p>
+                <div className="overflow-x-auto border rounded">
+                  <table className="preview">
+                    <thead><tr>{headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {rows.slice(0, 5).map((r, i) => (
+                        <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">총 {rows.length}행 (상위 5행만 표시)</p>
+              </div>
+            )}
+            <button
+              disabled={busy || headers.length === 0}
+              onClick={submitTable}
+              className="mt-4 bg-slate-900 text-white px-4 py-2 rounded disabled:opacity-50"
+            >영어로 변환하기</button>
+          </>
+        ) : (
+          <>
+            <input
+              type="file" accept="image/*"
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
+              className="block w-full text-sm text-slate-600 file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:bg-slate-900 file:text-white file:cursor-pointer"
+            />
+            {file && <p className="text-sm text-slate-500 mt-2">선택됨: {file.name} ({Math.round(file.size / 1024)} KB)</p>}
+            <p className="text-xs text-slate-400 mt-2">은행/증권 앱 캡처 이미지를 업로드하면 표를 자동 추출하여 영어로 변환합니다.</p>
+            <button
+              disabled={busy || !file}
+              onClick={submitImage}
+              className="mt-4 bg-slate-900 text-white px-4 py-2 rounded disabled:opacity-50"
+            >영어로 변환하기</button>
+          </>
+        )}
+
+        {busy && <div className="mt-4"><Spinner label={busyLabel} /></div>}
+        {err && <div className="mt-3 text-red-600 text-sm">{err}</div>}
+      </Card>
+    </div>
+  );
+}
+
+// ----------- Preview (before payment) — shows Korean source -----------
+function PreviewPage({ id }) {
+  const [cv, setCv] = useState(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    api(`/api/conversions/${id}`).then(setCv).catch(e => setErr(e.message));
+  }, [id]);
+
+  if (err) return <div className="max-w-4xl mx-auto p-6 text-red-600">{err}</div>;
+  if (!cv) return <div className="max-w-4xl mx-auto p-6"><Spinner /></div>;
+
+  const isImage = cv.source_type === 'image';
+  const src = cv.source_data || {};
+  const headers = isImage ? [] : (src.headers || []);
+  const rows = isImage ? [] : (src.rows || []);
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+      <Card className="p-6">
+        <div className="flex items-start justify-between mb-4 gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">{cv.title || '거래내역서'}</h1>
+            {(cv.period_start || cv.period_end) && (
+              <p className="text-slate-500 text-sm mt-1">기간: {cv.period_start || '—'} ~ {cv.period_end || '—'}</p>
+            )}
+            <span className="inline-block mt-2 text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded">
+              {isImage ? '이미지 업로드' : (cv.source_type === 'csv' ? 'CSV' : 'Excel')}
+            </span>
+          </div>
+          <div className="text-right">
+            <p className="text-sm text-slate-500">페이지 {cv.page_count} · 결제 금액</p>
+            <p className="text-2xl font-bold">₩ {cv.amount.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded p-3 mb-4">
+          <strong>결제 후 영문으로 변환됩니다.</strong> 아래는 업로드된 한글 원본 미리보기입니다 — 결제가 완료되면 Gemini가 자동으로 영어로 변환하고, 결과물(Excel + PDF)을 다운로드할 수 있습니다.
+        </div>
+
+        {isImage ? (
+          <div className="border rounded overflow-hidden bg-slate-50">
+            {cv.source_image_url ? (
+              <img src={cv.source_image_url} alt="업로드된 거래내역" className="w-full max-h-[600px] object-contain" />
+            ) : (
+              <p className="text-slate-500 text-sm p-4">이미지를 불러올 수 없습니다.</p>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto border rounded">
+            <table className="preview">
+              <thead><tr>{headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>{r.map((c, j) => <td key={j} className={isNumberCell(c) ? 'num' : ''}>{c}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!isImage && <p className="text-xs text-slate-400 mt-2">총 {rows.length}행 (한글 원본)</p>}
+      </Card>
+
+      <div className="flex gap-3">
+        {cv.paid ? (
+          <button onClick={() => navigate(`/result/${cv.id}`)} className="bg-green-700 text-white px-4 py-2 rounded">결제 완료 — 영문 결과 보기</button>
+        ) : (
+          <button onClick={() => navigate(`/pay/${cv.id}`)} className="bg-slate-900 text-white px-4 py-2 rounded">결제하고 영문 변환 (₩{cv.amount.toLocaleString()})</button>
+        )}
+        <button onClick={() => navigate('/upload')} className="border px-4 py-2 rounded">새 변환</button>
+      </div>
+    </div>
+  );
+}
+
+function isNumberCell(s) {
+  const t = String(s).replace(/[,\s]/g, '');
+  return /^-?\d+(\.\d+)?$/.test(t);
+}
+
+// ----------- Pay (Toss widget) -----------
+function PayPage({ id, user }) {
+  const [cv, setCv] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [ready, setReady] = useState(false);
+  const widgetsRef = useRef(null);
+  const orderInfoRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api(`/api/conversions/${id}`);
+        if (data.paid) { navigate(`/result/${id}`); return; }
+        setCv(data);
+        const cfg = await api('/api/config', { auth: false });
+        const order = await api('/api/payments/prepare', { method: 'POST', body: { conversionId: data.id } });
+        orderInfoRef.current = order;
+
+        const tossPayments = window.TossPayments(cfg.tossClientKey);
+        const widgets = tossPayments.widgets({ customerKey: order.customerKey });
+        widgetsRef.current = widgets;
+        await widgets.setAmount({ currency: 'KRW', value: order.amount });
+        await widgets.renderPaymentMethods({ selector: '#payment-method', variantKey: 'DEFAULT' });
+        await widgets.renderAgreement({ selector: '#agreement', variantKey: 'AGREEMENT' });
+        setReady(true);
+      } catch (e) { setErr(e.message); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  const onPay = async () => {
+    setErr(''); setBusy(true);
+    try {
+      const order = orderInfoRef.current;
+      const successUrl = `${window.location.origin}/?conversionId=${id}`;
+      const failUrl = `${window.location.origin}/?paymentFailed=1&conversionId=${id}`;
+      await widgetsRef.current.requestPayment({
+        orderId: order.orderId,
+        orderName: order.orderName,
+        successUrl,
+        failUrl,
+        customerEmail: user?.email || '',
+        customerName: user?.display_name || user?.email || 'Customer',
+      });
+    } catch (e) { setErr(e.message); setBusy(false); }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+      <Card className="p-6">
+        <h1 className="text-xl font-bold mb-2">결제</h1>
+        {cv && (
+          <div className="mb-4 text-sm text-slate-600">
+            <div>변환 #{cv.id} — 페이지 {cv.page_count}</div>
+            <div className="text-2xl font-bold text-slate-900 mt-1">₩ {cv.amount.toLocaleString()}</div>
+          </div>
+        )}
+        <div id="payment-method" />
+        <div id="agreement" />
+        {err && <div className="text-red-600 text-sm mt-2">{err}</div>}
+        <button
+          disabled={!ready || busy}
+          onClick={onPay}
+          className="w-full mt-4 bg-blue-600 text-white py-3 rounded disabled:opacity-50"
+        >{busy ? '결제 진행 중...' : '결제하기'}</button>
+        <button onClick={() => navigate(`/preview/${id}`)} className="w-full mt-2 border py-2 rounded text-sm">미리보기로 돌아가기</button>
+      </Card>
+    </div>
+  );
+}
+
+// ----------- Result (download) -----------
+function ResultPage({ id }) {
+  const [cv, setCv] = useState(null);
+  const [err, setErr] = useState('');
+  const [retrying, setRetrying] = useState(false);
+  const previewRef = useRef(null);
+
+  const reload = useCallback(() => {
+    return api(`/api/conversions/${id}`).then(setCv).catch(e => setErr(e.message));
+  }, [id]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const retryTranslate = async () => {
+    setErr(''); setRetrying(true);
+    try {
+      await api(`/api/conversions/${id}/translate`, { method: 'POST' });
+      await reload();
+    } catch (e) { setErr(e.message); }
+    finally { setRetrying(false); }
+  };
+
+  if (err && !cv) return <div className="max-w-4xl mx-auto p-6 text-red-600">{err}</div>;
+  if (!cv) return <div className="max-w-4xl mx-auto p-6"><Spinner /></div>;
+  if (!cv.paid) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <Card className="p-6">
+          <p className="text-slate-700 mb-3">아직 결제가 완료되지 않았습니다.</p>
+          <button onClick={() => navigate(`/pay/${id}`)} className="bg-slate-900 text-white px-4 py-2 rounded">결제 페이지로</button>
+        </Card>
+      </div>
+    );
+  }
+
+  const t = cv.translated_data || {};
+  const headers = t.headers || [];
+  const rows = t.rows || [];
+
+  if (headers.length === 0 || rows.length === 0) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <Card className="p-6">
+          <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded mb-3">결제 완료</span>
+          <h1 className="text-lg font-bold mb-2">영문 변환에 실패했습니다</h1>
+          <p className="text-slate-600 text-sm mb-4">결제는 정상 처리되었습니다. 변환을 다시 시도할 수 있습니다 (추가 비용 없음).</p>
+          {err && <p className="text-red-600 text-sm mb-3">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={retryTranslate} disabled={retrying} className="bg-slate-900 text-white px-4 py-2 rounded disabled:opacity-50">{retrying ? '변환 중...' : '영문 변환 재시도'}</button>
+            <button onClick={() => navigate('/history')} className="border px-4 py-2 rounded">구매이력</button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+  const docTitle = t.title || cv.title || 'Transaction Statement';
+  const period = (t.periodStart || t.periodEnd) ? `Period: ${t.periodStart || '—'} ~ ${t.periodEnd || '—'}` : '';
+
+  const downloadExcel = () => {
+    const aoa = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Statement');
+    const filename = `${(docTitle || 'statement').replace(/[\/\\?%*:|"<>]/g, '_')}.xlsx`;
+    XLSX.writeFile(wb, filename);
+  };
+
+  const downloadPdf = () => {
+    const el = previewRef.current;
+    if (!el) return;
+    const opt = {
+      margin: [10, 10, 10, 10],
+      filename: `${(docTitle || 'statement').replace(/[\/\\?%*:|"<>]/g, '_')}.pdf`,
+      image: { type: 'jpeg', quality: 0.95 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' },
+      pagebreak: { mode: ['css', 'legacy'] },
+    };
+    window.html2pdf().set(opt).from(el).save();
+  };
+
+  return (
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <span className="inline-block bg-green-100 text-green-800 text-xs font-medium px-2 py-1 rounded">결제 완료</span>
+            <p className="text-sm text-slate-500 mt-1">결제일: {cv.paid_at ? new Date(cv.paid_at).toLocaleString('ko-KR') : '—'}</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={downloadExcel} className="bg-emerald-600 text-white px-3 py-2 rounded text-sm">Excel 다운로드</button>
+            <button onClick={downloadPdf} className="bg-rose-600 text-white px-3 py-2 rounded text-sm">PDF 다운로드</button>
+          </div>
+        </div>
+
+        <div ref={previewRef} className="pdf-page bg-white p-6">
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold">{docTitle}</h1>
+            {period && <p className="text-slate-600 text-sm mt-1">{period}</p>}
+          </div>
+          <table className="preview">
+            <thead><tr>{headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i}>{r.map((c, j) => <td key={j} className={isNumberCell(c) ? 'num' : ''}>{c}</td>)}</tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-xs text-slate-400 mt-3">This document was generated for foreign customer reference. Not an official bank-issued statement.</p>
+        </div>
+      </Card>
+
+      <div className="flex gap-2">
+        <button onClick={() => navigate('/history')} className="border px-4 py-2 rounded">구매이력</button>
+        <button onClick={() => navigate('/upload')} className="border px-4 py-2 rounded">새 변환</button>
+      </div>
+    </div>
+  );
+}
+
+// ----------- History -----------
+function HistoryPage() {
+  const [items, setItems] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    api('/api/conversions').then(setItems).catch(e => setErr(e.message));
+  }, []);
+  if (err) return <div className="max-w-4xl mx-auto p-6 text-red-600">{err}</div>;
+  if (!items) return <div className="max-w-4xl mx-auto p-6"><Spinner /></div>;
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-xl font-bold">구매이력</h1>
+          <button onClick={() => navigate('/upload')} className="bg-slate-900 text-white px-3 py-1.5 rounded text-sm">새 변환</button>
+        </div>
+        {items.length === 0 ? (
+          <p className="text-slate-500 text-sm">변환 기록이 없습니다.</p>
+        ) : (
+          <ul className="divide-y">
+            {items.map(it => (
+              <li key={it.id} className="py-3 flex items-center justify-between">
+                <div>
+                  <div className="font-medium">{it.title || `변환 #${it.id}`}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {it.source_type.toUpperCase()} · 페이지 {it.page_count} · ₩{it.amount.toLocaleString()} · {new Date(it.created_at).toLocaleDateString('ko-KR')}
+                    {(it.period_start || it.period_end) && ` · ${it.period_start || ''}~${it.period_end || ''}`}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {it.paid ? (
+                    <>
+                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">결제완료</span>
+                      <button onClick={() => navigate(`/result/${it.id}`)} className="bg-slate-900 text-white px-3 py-1.5 rounded text-sm">다시 다운로드</button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded">미결제</span>
+                      <button onClick={() => navigate(`/preview/${it.id}`)} className="border px-3 py-1.5 rounded text-sm">계속</button>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// ----------- Payback (Toss success redirect) -----------
+function PaybackPage() {
+  const [msg, setMsg] = useState('결제를 승인하고 있습니다...');
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const sp = new URLSearchParams(window.location.search);
+      const paymentKey = sp.get('paymentKey');
+      const orderId = sp.get('orderId');
+      const amount = parseInt(sp.get('amount') || '0', 10);
+      const conversionId = sp.get('conversionId');
+      try {
+        if (!paymentKey || !orderId || !amount || !conversionId) {
+          throw new Error('결제 정보가 누락되었습니다.');
+        }
+        setMsg('결제 승인 + Gemini 영문 변환 중... (10~20초 소요)');
+        await api('/api/payments/confirm', { method: 'POST', body: { paymentKey, orderId, amount } });
+        window.history.replaceState({}, '', '/');
+        navigate(`/result/${conversionId}`);
+      } catch (e) { setErr(e.message); setMsg(''); }
+    })();
+  }, []);
+  return (
+    <div className="max-w-md mx-auto p-6">
+      <Card className="p-6">
+        {msg && <Spinner label={msg} />}
+        {err && (
+          <div>
+            <p className="text-red-600 mb-3">{err}</p>
+            <button onClick={() => navigate('/upload')} className="border px-3 py-1.5 rounded text-sm">처음으로</button>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PayFailedPage() {
+  return (
+    <div className="max-w-md mx-auto p-6">
+      <Card className="p-6">
+        <h1 className="text-lg font-bold mb-2">결제가 취소되었습니다</h1>
+        <p className="text-slate-600 text-sm mb-3">다시 시도하시려면 미리보기 페이지로 돌아가 주세요.</p>
+        <button onClick={() => navigate('/upload')} className="border px-3 py-1.5 rounded text-sm">처음으로</button>
+      </Card>
+    </div>
+  );
+}
+
+// ----------- App shell + router -----------
+function App() {
+  const [user, setUser] = useState(getUser());
+  const [bootDone, setBootDone] = useState(false);
+  const { route, parts, params } = useHash();
+
+  // On boot: detect Toss redirect (query has paymentKey) and route to payback
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('paymentKey') && sp.get('orderId') && sp.get('amount')) {
+      window.location.hash = '#/payback';
+    } else if (sp.get('paymentFailed')) {
+      window.history.replaceState({}, '', '/');
+      window.location.hash = '#/payment-failed';
+    }
+    if (!window.location.hash) window.location.hash = '#/upload';
+  }, []);
+
+  // Validate token on boot
+  useEffect(() => {
+    const t = getToken();
+    if (!t) { setBootDone(true); return; }
+    api('/api/auth/me')
+      .then(({ user }) => { setUser(user); setBootDone(true); })
+      .catch(() => { clearSession(); setUser(null); setBootDone(true); });
+  }, []);
+
+  if (!bootDone) {
+    return <div className="max-w-md mx-auto p-6"><Spinner label="로딩 중..." /></div>;
+  }
+
+  // Public routes
+  if (route === '/login') return <><Header user={user} /><LoginPage onLogin={setUser} /></>;
+  if (route === '/register') return <><Header user={user} /><RegisterPage onLogin={setUser} /></>;
+
+  // Auth-required
+  if (!user) {
+    if (route !== '/login' && route !== '/register') {
+      navigate('/login');
+      return <div className="max-w-md mx-auto p-6"><Spinner label="로그인 페이지로 이동..." /></div>;
+    }
+  }
+
+  let body;
+  if (route === '/upload' || route === '/') body = <UploadPage />;
+  else if (route === '/history') body = <HistoryPage />;
+  else if (parts[0] === 'preview' && parts[1]) body = <PreviewPage id={parts[1]} />;
+  else if (parts[0] === 'pay' && parts[1]) body = <PayPage id={parts[1]} user={user} />;
+  else if (parts[0] === 'result' && parts[1]) body = <ResultPage id={parts[1]} />;
+  else if (route === '/payback') body = <PaybackPage />;
+  else if (route === '/payment-failed') body = <PayFailedPage />;
+  else body = <UploadPage />;
+
+  return <><Header user={user} />{body}</>;
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>
