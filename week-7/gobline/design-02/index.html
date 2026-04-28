@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>joe튜브 Admin · 콘텐츠 운영 관리자</title>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind config (must come BEFORE the Tailwind script) -->
+  <script>
+    tailwind = { config: {} };
+  </script>
+  <script>
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 + Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    html, body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+    /* Hide native scrollbars but keep scroll behavior crisp */
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 9999px; }
+    .dark .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); }
+
+    /* Subtle focus ring matching shadcn */
+    .focus-ring:focus-visible {
+      outline: 2px solid transparent;
+      outline-offset: 2px;
+      box-shadow: 0 0 0 2px rgba(24,24,27,0.95), 0 0 0 4px rgba(24,24,27,0.18);
+    }
+    .dark .focus-ring:focus-visible {
+      box-shadow: 0 0 0 2px rgba(244,244,245,0.95), 0 0 0 4px rgba(244,244,245,0.18);
+    }
+
+    /* Smooth scrolling for in-page anchors */
+    html { scroll-behavior: smooth; }
+
+    /* Tabular nums helper */
+    .tnum { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    // ========================================
+    // ⚛️  React Hooks
+    // ========================================
+    const { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } = React;
+
+    // ========================================
+    // 🎨  Inline SVG Icons (shadcn-flavored — w-4 h-4 stroke-[1.5])
+    //    Using inline SVG instead of Lucide CDN because lucide.createIcons()
+    //    re-runs awkwardly on every React re-render and replaces nodes,
+    //    which makes click handlers / refs flaky. Inline SVG gives perfectly
+    //    deterministic rendering and the same visual weight.
+    // ========================================
+    const Icon = ({ name, className = "w-4 h-4" }) => {
+      const stroke = "currentColor";
+      const sw = 1.5;
+      const common = {
+        xmlns: "http://www.w3.org/2000/svg",
+        viewBox: "0 0 24 24",
+        fill: "none",
+        stroke,
+        strokeWidth: sw,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        className,
+      };
+      switch (name) {
+        case "clapperboard":
+          return (<svg {...common}><path d="M20.2 6 3 11l-.9-2.4c-.3-1 .3-2.1 1.3-2.4l13.3-3.7c1-.3 2.1.3 2.4 1.3Z"/><path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 3.9"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>);
+        case "layout-dashboard":
+          return (<svg {...common}><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>);
+        case "video":
+          return (<svg {...common}><path d="m22 8-6 4 6 4V8Z"/><rect width="14" height="12" x="2" y="6" rx="2" ry="2"/></svg>);
+        case "message-square":
+          return (<svg {...common}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>);
+        case "wallet":
+          return (<svg {...common}><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1h-3a2 2 0 1 1 0-4h3a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2"/></svg>);
+        case "users":
+          return (<svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>);
+        case "settings":
+          return (<svg {...common}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2"/><circle cx="12" cy="12" r="3"/></svg>);
+        case "search":
+          return (<svg {...common}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>);
+        case "bell":
+          return (<svg {...common}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>);
+        case "sun":
+          return (<svg {...common}><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>);
+        case "moon":
+          return (<svg {...common}><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>);
+        case "chevron-down":
+          return (<svg {...common}><path d="m6 9 6 6 6-6"/></svg>);
+        case "chevron-right":
+          return (<svg {...common}><path d="m9 18 6-6-6-6"/></svg>);
+        case "chevron-left":
+          return (<svg {...common}><path d="m15 18-6-6 6-6"/></svg>);
+        case "chevron-up":
+          return (<svg {...common}><path d="m18 15-6-6-6 6"/></svg>);
+        case "trending-up":
+          return (<svg {...common}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>);
+        case "trending-down":
+          return (<svg {...common}><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg>);
+        case "more-horizontal":
+          return (<svg {...common}><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>);
+        case "plus":
+          return (<svg {...common}><path d="M5 12h14"/><path d="M12 5v14"/></svg>);
+        case "filter":
+          return (<svg {...common}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>);
+        case "calendar":
+          return (<svg {...common}><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>);
+        case "menu":
+          return (<svg {...common}><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>);
+        case "x":
+          return (<svg {...common}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>);
+        case "sparkles":
+          return (<svg {...common}><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>);
+        case "check":
+          return (<svg {...common}><path d="M20 6 9 17l-5-5"/></svg>);
+        case "edit":
+          return (<svg {...common}><path d="M12 20h9"/><path d="M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z"/></svg>);
+        case "thumbs-up":
+          return (<svg {...common}><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/></svg>);
+        case "flag":
+          return (<svg {...common}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>);
+        case "trash":
+          return (<svg {...common}><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>);
+        case "kbd-cmd":
+          return (<svg {...common}><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg>);
+        case "alert-triangle":
+          return (<svg {...common}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>);
+        case "eye":
+          return (<svg {...common}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>);
+        case "play":
+          return (<svg {...common}><polygon points="6 3 20 12 6 21 6 3"/></svg>);
+        case "upload":
+          return (<svg {...common}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>);
+        default:
+          return null;
+      }
+    };
+
+    // ========================================
+    // 🎨  Design System — Utilities
+    // ========================================
+    const cn = (...classes) => classes.filter(Boolean).join(" ");
+
+    // ========================================
+    // 🎨  Design System — Button
+    // ========================================
+    const Button = React.forwardRef(({ variant = "default", size = "md", className = "", children, ...props }, ref) => {
+      const base = "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-colors focus-ring disabled:pointer-events-none disabled:opacity-50";
+      const variants = {
+        default: "bg-zinc-900 text-zinc-50 hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200",
+        secondary: "bg-zinc-100 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700",
+        outline: "border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50 dark:hover:bg-zinc-900",
+        ghost: "text-zinc-900 hover:bg-zinc-100 dark:text-zinc-50 dark:hover:bg-zinc-800",
+        destructive: "bg-red-500 text-zinc-50 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700",
+        link: "text-zinc-900 underline-offset-4 hover:underline dark:text-zinc-50",
+      };
+      const sizes = {
+        sm: "h-8 px-3 text-xs",
+        md: "h-9 px-4 text-sm",
+        lg: "h-10 px-6 text-sm",
+        icon: "h-9 w-9 p-0",
+      };
+      return (
+        <button ref={ref} className={cn(base, variants[variant], sizes[size], className)} {...props}>
+          {children}
+        </button>
+      );
+    });
+
+    // ========================================
+    // 🎨  Design System — Card
+    // ========================================
+    const Card = ({ className = "", children, ...props }) => (
+      <div className={cn("rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900", className)} {...props}>
+        {children}
+      </div>
+    );
+    const CardHeader = ({ className = "", children }) => (
+      <div className={cn("flex flex-col space-y-1.5 p-6", className)}>{children}</div>
+    );
+    const CardTitle = ({ className = "", children }) => (
+      <h3 className={cn("text-base font-semibold leading-none tracking-tight", className)}>{children}</h3>
+    );
+    const CardDescription = ({ className = "", children }) => (
+      <p className={cn("text-sm text-zinc-500 dark:text-zinc-400", className)}>{children}</p>
+    );
+    const CardContent = ({ className = "", children }) => (
+      <div className={cn("p-6 pt-0", className)}>{children}</div>
+    );
+    const CardFooter = ({ className = "", children }) => (
+      <div className={cn("flex items-center p-6 pt-0", className)}>{children}</div>
+    );
+
+    // ========================================
+    // 🎨  Design System — Input
+    // ========================================
+    const Input = React.forwardRef(({ className = "", leftIcon, rightSlot, ...props }, ref) => (
+      <div className={cn("relative flex items-center", className)}>
+        {leftIcon && (
+          <span className="pointer-events-none absolute left-3 text-zinc-500 dark:text-zinc-400">{leftIcon}</span>
+        )}
+        <input
+          ref={ref}
+          className={cn(
+            "flex h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-ring disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-800 dark:bg-zinc-950 dark:placeholder:text-zinc-500",
+            leftIcon ? "pl-9" : "",
+            rightSlot ? "pr-16" : ""
+          )}
+          {...props}
+        />
+        {rightSlot && (
+          <span className="pointer-events-none absolute right-2 flex items-center">{rightSlot}</span>
+        )}
+      </div>
+    ));
+
+    const Kbd = ({ children }) => (
+      <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border border-zinc-200 bg-zinc-100 px-1.5 font-mono text-[10px] font-medium text-zinc-600 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
+        {children}
+      </kbd>
+    );
+
+    // ========================================
+    // 🎨  Design System — Badge
+    // ========================================
+    const Badge = ({ variant = "default", className = "", children }) => {
+      const variants = {
+        default: "bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900",
+        secondary: "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50",
+        outline: "border border-zinc-200 text-zinc-900 dark:border-zinc-700 dark:text-zinc-50",
+        destructive: "bg-red-500 text-zinc-50 dark:bg-red-600",
+        warning: "bg-yellow-100 text-yellow-800 border border-yellow-200 dark:bg-yellow-500/10 dark:text-yellow-400 dark:border-yellow-500/20",
+        success: "bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
+      };
+      return (
+        <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", variants[variant], className)}>
+          {children}
+        </span>
+      );
+    };
+
+    // ========================================
+    // 🎨  Design System — Avatar
+    // ========================================
+    const Avatar = ({ src, fallback = "?", size = "md", className = "" }) => {
+      const sizes = { sm: "h-7 w-7 text-[10px]", md: "h-9 w-9 text-xs", lg: "h-10 w-10 text-sm" };
+      const [errored, setErrored] = useState(false);
+      return (
+        <span className={cn("relative inline-flex shrink-0 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800", sizes[size], className)}>
+          {src && !errored ? (
+            <img src={src} onError={() => setErrored(true)} alt="" className="aspect-square h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center font-medium text-zinc-700 dark:text-zinc-200">{fallback}</span>
+          )}
+        </span>
+      );
+    };
+
+    // ========================================
+    // 🎨  Design System — Separator
+    // ========================================
+    const Separator = ({ className = "", orientation = "horizontal" }) => (
+      <div className={cn(
+        "shrink-0 bg-zinc-200 dark:bg-zinc-800",
+        orientation === "horizontal" ? "h-[1px] w-full" : "h-full w-[1px]",
+        className
+      )} />
+    );
+
+    // ========================================
+    // 🎨  Design System — Table primitives
+    // ========================================
+    const Table = ({ className = "", children }) => (
+      <div className="relative w-full overflow-auto">
+        <table className={cn("w-full caption-bottom text-sm", className)}>{children}</table>
+      </div>
+    );
+    const THead = ({ children, className = "" }) => (
+      <thead className={cn("border-b border-zinc-200 dark:border-zinc-800", className)}>{children}</thead>
+    );
+    const TBody = ({ children, className = "" }) => (
+      <tbody className={cn("[&_tr:last-child]:border-0", className)}>{children}</tbody>
+    );
+    const TR = ({ children, className = "" }) => (
+      <tr className={cn("border-b border-zinc-200 transition-colors hover:bg-zinc-50/60 data-[state=selected]:bg-zinc-100 dark:border-zinc-800 dark:hover:bg-zinc-800/40", className)}>{children}</tr>
+    );
+    const TH = ({ children, className = "" }) => (
+      <th className={cn("h-10 px-4 text-left align-middle text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400", className)}>{children}</th>
+    );
+    const TD = ({ children, className = "" }) => (
+      <td className={cn("p-3 align-middle", className)}>{children}</td>
+    );
+
+    // ========================================
+    // 🎨  Design System — DropdownMenu
+    // ========================================
+    const DropdownMenu = ({ trigger, items, align = "right" }) => {
+      const [open, setOpen] = useState(false);
+      const ref = useRef(null);
+      useEffect(() => {
+        if (!open) return;
+        const onDoc = (e) => {
+          if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+        };
+        const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
+        document.addEventListener("mousedown", onDoc);
+        document.addEventListener("keydown", onEsc);
+        return () => {
+          document.removeEventListener("mousedown", onDoc);
+          document.removeEventListener("keydown", onEsc);
+        };
+      }, [open]);
+      return (
+        <div className="relative inline-block" ref={ref}>
+          <span onClick={() => setOpen((o) => !o)}>{trigger}</span>
+          {open && (
+            <div className={cn(
+              "absolute z-50 mt-1 min-w-[10rem] overflow-hidden rounded-lg border border-zinc-200 bg-white p-1 shadow-md dark:border-zinc-800 dark:bg-zinc-900",
+              align === "right" ? "right-0" : "left-0"
+            )}>
+              {items.map((it, i) => it.separator ? (
+                <div key={i} className="my-1 h-[1px] bg-zinc-200 dark:bg-zinc-800" />
+              ) : (
+                <button
+                  key={i}
+                  onClick={() => { it.onClick && it.onClick(); setOpen(false); }}
+                  className={cn(
+                    "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none transition-colors",
+                    it.destructive
+                      ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-500/10"
+                      : "text-zinc-900 hover:bg-zinc-100 dark:text-zinc-50 dark:hover:bg-zinc-800"
+                  )}
+                >
+                  {it.icon}
+                  <span className="flex-1 text-left">{it.label}</span>
+                  {it.shortcut && <span className="ml-auto text-xs text-zinc-500">{it.shortcut}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ========================================
+    // 🎨  Design System — Select (custom-rendered)
+    // ========================================
+    const Select = ({ value, options, onChange, placeholder = "선택", className = "" }) => {
+      const [open, setOpen] = useState(false);
+      const ref = useRef(null);
+      useEffect(() => {
+        if (!open) return;
+        const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+        const onEsc = (e) => { if (e.key === "Escape") setOpen(false); };
+        document.addEventListener("mousedown", onDoc);
+        document.addEventListener("keydown", onEsc);
+        return () => {
+          document.removeEventListener("mousedown", onDoc);
+          document.removeEventListener("keydown", onEsc);
+        };
+      }, [open]);
+      const current = options.find((o) => o.value === value);
+      return (
+        <div className={cn("relative", className)} ref={ref}>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 text-sm focus-ring dark:border-zinc-800 dark:bg-zinc-950"
+          >
+            <span className={cn(current ? "text-zinc-900 dark:text-zinc-50" : "text-zinc-500")}>
+              {current ? current.label : placeholder}
+            </span>
+            <Icon name="chevron-down" className="h-4 w-4 text-zinc-500" />
+          </button>
+          {open && (
+            <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-zinc-200 bg-white p-1 shadow-md dark:border-zinc-800 dark:bg-zinc-900">
+              {options.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => { onChange(o.value); setOpen(false); }}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                    o.value === value ? "bg-zinc-100 dark:bg-zinc-800" : "hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  )}
+                >
+                  <span className="w-4">{o.value === value && <Icon name="check" className="h-4 w-4" />}</span>
+                  <span>{o.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // ========================================
+    // 🎨  Design System — Tabs
+    // ========================================
+    const Tabs = ({ tabs, value, onChange }) => (
+      <div className="inline-flex h-9 items-center justify-center rounded-lg bg-zinc-100 p-1 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+        {tabs.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => onChange(t.value)}
+            className={cn(
+              "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all",
+              value === t.value
+                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-50"
+                : "hover:text-zinc-900 dark:hover:text-zinc-50"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    );
+
+    // ========================================
+    // 🎨  Design System — Sparkline (inline SVG)
+    // ========================================
+    const Sparkline = ({ data, positive = true, className = "" }) => {
+      const w = 80, h = 24, pad = 2;
+      const min = Math.min(...data), max = Math.max(...data);
+      const range = max - min || 1;
+      const pts = data.map((v, i) => {
+        const x = pad + (i * (w - pad * 2)) / (data.length - 1);
+        const y = h - pad - ((v - min) / range) * (h - pad * 2);
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(" ");
+      const stroke = positive ? "#10b981" : "#ef4444";
+      return (
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className={className} fill="none">
+          <polyline points={pts} stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    };
+
+    // ========================================
+    // 📦  Mock Data
+    // ========================================
+    const NAV_ITEMS = [
+      { id: "dashboard", label: "대시보드", icon: "layout-dashboard" },
+      { id: "videos", label: "영상", icon: "video" },
+      { id: "comments", label: "댓글", icon: "message-square" },
+      { id: "revenue", label: "수익", icon: "wallet" },
+      { id: "subscribers", label: "구독자", icon: "users" },
+      { id: "settings", label: "설정", icon: "settings" },
+    ];
+    const SECTION_TITLES = NAV_ITEMS.reduce((acc, n) => { acc[n.id] = n.label; return acc; }, {});
+
+    const STATS = [
+      { label: "총 구독자", value: "283,420", delta: 12.4, positive: true, spark: [12,18,15,22,20,28,26,32,35,38,40,44] },
+      { label: "이번달 조회수", value: "4,127,890", delta: 8.1, positive: true, spark: [40,45,42,48,55,60,58,65,68,72,75,82] },
+      { label: "예상 수익", value: "₩18,472,300", delta: -2.3, positive: false, spark: [60,62,58,55,57,52,50,48,46,45,44,42] },
+      { label: "신규 영상", value: "12", delta: 33.3, positive: true, spark: [2,3,2,4,3,5,4,6,5,7,6,8] },
+    ];
+
+    const TOP_VIDEOS = [
+      { id: 1, title: "방콕 가성비 호텔 TOP 5", views: "1.2M", thumb: "https://picsum.photos/seed/joe1/120/68" },
+      { id: 2, title: "베트남 길거리 음식 24시간 챌린지", views: "984K", thumb: "https://picsum.photos/seed/joe2/120/68" },
+      { id: 3, title: "유럽 배낭여행 1편: 파리 첫날", views: "812K", thumb: "https://picsum.photos/seed/joe3/120/68" },
+      { id: 4, title: "도쿄 라멘 5대장 비교", views: "654K", thumb: "https://picsum.photos/seed/joe4/120/68" },
+      { id: 5, title: "제주도 숨은 카페 7곳", views: "521K", thumb: "https://picsum.photos/seed/joe5/120/68" },
+    ];
+
+    const VIDEOS = [
+      { id: 101, title: "방콕 가성비 호텔 TOP 5", status: "공개",  views: 1248301, likes: 38421, date: "2026.04.20", thumb: "https://picsum.photos/seed/joe1/96/54" },
+      { id: 102, title: "베트남 길거리 음식 24시간 챌린지", status: "공개", views: 984210, likes: 31022, date: "2026.04.18", thumb: "https://picsum.photos/seed/joe2/96/54" },
+      { id: 103, title: "유럽 배낭여행 1편: 파리 첫날", status: "공개", views: 812904, likes: 27455, date: "2026.04.15", thumb: "https://picsum.photos/seed/joe3/96/54" },
+      { id: 104, title: "도쿄 라멘 5대장 비교", status: "공개", views: 654332, likes: 22014, date: "2026.04.12", thumb: "https://picsum.photos/seed/joe4/96/54" },
+      { id: 105, title: "제주도 숨은 카페 7곳", status: "검토중", views: 0, likes: 0, date: "2026.04.27", thumb: "https://picsum.photos/seed/joe5/96/54" },
+      { id: 106, title: "오사카 야경 드라이브 BGM 모음", status: "비공개", views: 12044, likes: 822, date: "2026.04.10", thumb: "https://picsum.photos/seed/joe6/96/54" },
+      { id: 107, title: "방콕 야시장 가격 정리 (2026)", status: "공개", views: 421889, likes: 15082, date: "2026.04.08", thumb: "https://picsum.photos/seed/joe7/96/54" },
+      { id: 108, title: "런던 1주일 살기 예산 공개", status: "검토중", views: 0, likes: 0, date: "2026.04.26", thumb: "https://picsum.photos/seed/joe8/96/54" },
+    ];
+
+    const COMMENTS = [
+      { id: 1, name: "김여행", handle: "@traveler_kim", time: "2시간 전", avatar: "https://i.pravatar.cc/64?img=12",
+        text: "이 영상 보고 다음주 방콕 가는데, 추천하신 호텔 다 만실이에요 ㅠㅠ 비슷한 다른 곳도 알려주실 수 있나요?",
+        suggestion: "안녕하세요! 만실이라니 안타깝네요. 같은 가격대로는 Riverside Inn (수쿰빗)과 Casa Nithra (방콕 시청 근처)도 좋습니다. 영상에 자료 추가해 둘게요!" },
+      { id: 2, name: "라멘덕후", handle: "@ramen_lover", time: "5시간 전", avatar: "https://i.pravatar.cc/64?img=33",
+        text: "도쿄 라멘 영상 잘 봤습니다! 츠케멘 편도 만들어주실 수 있나요?" },
+      { id: 3, name: "백패커유진", handle: "@backpack_yj", time: "1일 전", avatar: "https://i.pravatar.cc/64?img=47",
+        text: "유럽 배낭여행 시리즈 너무 좋아요. 2편은 언제 올라오나요?" },
+      { id: 4, name: "제주살이", handle: "@jeju_life", time: "2일 전", avatar: "https://i.pravatar.cc/64?img=5",
+        text: "영상에 나온 카페 위치가 정확히 어디인가요? 댓글 고정 부탁드립니다!" },
+      { id: 5, name: "여행메이트", handle: "@trip_mate", time: "3일 전", avatar: "https://i.pravatar.cc/64?img=22",
+        text: "베트남 길거리 음식 영상 보고 따라 갔는데 진짜 맛있었어요. 감사합니다!" },
+    ];
+
+    const REVENUE_SOURCES = [
+      { name: "광고 수익", amount: 12482300, share: 67.6 },
+      { name: "멤버십",    amount: 3120000,  share: 16.9 },
+      { name: "슈퍼챗",    amount: 2150000,  share: 11.6 },
+      { name: "기타",      amount: 720000,   share: 3.9 },
+    ];
+
+    const SUBSCRIBERS = [
+      { name: "박민준", handle: "@minjun_park", date: "2026.04.27", avatar: "https://i.pravatar.cc/64?img=11" },
+      { name: "이서연", handle: "@seoyeon_lee", date: "2026.04.27", avatar: "https://i.pravatar.cc/64?img=21" },
+      { name: "최도윤", handle: "@doyun_choi",  date: "2026.04.26", avatar: "https://i.pravatar.cc/64?img=31" },
+      { name: "정하은", handle: "@haeun_jung",  date: "2026.04.26", avatar: "https://i.pravatar.cc/64?img=41" },
+      { name: "강시우", handle: "@siwoo_kang",  date: "2026.04.25", avatar: "https://i.pravatar.cc/64?img=51" },
+      { name: "윤지호", handle: "@jiho_yoon",   date: "2026.04.25", avatar: "https://i.pravatar.cc/64?img=61" },
+    ];
+
+    const fmtNum = (n) => n.toLocaleString("ko-KR");
+    const fmtKRW = (n) => "₩" + n.toLocaleString("ko-KR");
+
+    // ========================================
+    // 🌗  Theme Hook (persisted to localStorage)
+    // ========================================
+    const useTheme = () => {
+      const [theme, setTheme] = useState(() => {
+        try {
+          const stored = localStorage.getItem("joetube-admin-theme");
+          if (stored === "dark" || stored === "light") return stored;
+        } catch {}
+        return "light";
+      });
+      useEffect(() => {
+        const root = document.documentElement;
+        if (theme === "dark") root.classList.add("dark");
+        else root.classList.remove("dark");
+        try { localStorage.setItem("joetube-admin-theme", theme); } catch {}
+      }, [theme]);
+      const toggle = useCallback(() => setTheme((t) => (t === "dark" ? "light" : "dark")), []);
+      return { theme, toggle };
+    };
+
+    // ========================================
+    // 🧩  Sidebar
+    // ========================================
+    const Sidebar = ({ active, onSelect, mobileOpen, onCloseMobile }) => {
+      return (
+        <>
+          {/* Mobile overlay */}
+          {mobileOpen && (
+            <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={onCloseMobile} />
+          )}
+          <aside className={cn(
+            "fixed inset-y-0 left-0 z-50 flex w-[260px] flex-col border-r border-zinc-200 bg-white transition-transform dark:border-zinc-800 dark:bg-zinc-900",
+            "lg:translate-x-0",
+            mobileOpen ? "translate-x-0" : "-translate-x-full"
+          )}>
+            {/* Brand */}
+            <div className="flex h-16 items-center justify-between gap-3 border-b border-zinc-200 px-6 dark:border-zinc-800">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-zinc-50 dark:bg-zinc-50 dark:text-zinc-900">
+                  <Icon name="clapperboard" className="h-4 w-4" />
+                </span>
+                <div className="leading-tight">
+                  <div className="text-sm font-semibold tracking-tight">joe튜브</div>
+                  <div className="text-[11px] text-zinc-500">Admin Console</div>
+                </div>
+              </div>
+              <button className="lg:hidden" onClick={onCloseMobile}>
+                <Icon name="x" className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Nav */}
+            <nav className="flex-1 overflow-y-auto px-3 py-4 scrollbar-thin">
+              <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-500">Menu</div>
+              <ul className="space-y-1">
+                {NAV_ITEMS.map((item) => {
+                  const isActive = active === item.id;
+                  return (
+                    <li key={item.id}>
+                      <a
+                        href={`#${item.id}`}
+                        onClick={(e) => { onSelect(item.id, e); onCloseMobile && onCloseMobile(); }}
+                        className={cn(
+                          "group flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm transition-colors",
+                          isActive
+                            ? "bg-zinc-100 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-50"
+                            : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+                        )}
+                      >
+                        <Icon name={item.icon} className="h-4 w-4" />
+                        <span>{item.label}</span>
+                        {item.id === "comments" && (
+                          <Badge variant="secondary" className="ml-auto h-5 px-1.5 text-[10px]">5</Badge>
+                        )}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <div className="mt-6 px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-500">Workspace</div>
+              <ul className="space-y-1">
+                <li><a className="flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50" href="#"><Icon name="sparkles" className="h-4 w-4" /><span>AI 어시스턴트</span><Badge variant="warning" className="ml-auto h-5 px-1.5 text-[9px]">NEW</Badge></a></li>
+                <li><a className="flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50" href="#"><Icon name="upload" className="h-4 w-4" /><span>업로드 큐</span></a></li>
+              </ul>
+            </nav>
+
+            {/* User pill */}
+            <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
+              <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                <Avatar src="https://i.pravatar.cc/64?img=64" fallback="조" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">조 튜브</div>
+                  <div className="truncate text-xs text-zinc-500">@joetube · 28만 4,200</div>
+                </div>
+                <Icon name="chevron-right" className="h-4 w-4 text-zinc-500" />
+              </button>
+            </div>
+          </aside>
+        </>
+      );
+    };
+
+    // ========================================
+    // 🧩  Topbar
+    // ========================================
+    const Topbar = ({ activeTitle, theme, onToggleTheme, onOpenMobile }) => (
+      <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-zinc-200 bg-white/80 px-4 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80 sm:px-6">
+        <button onClick={onOpenMobile} className="lg:hidden">
+          <Icon name="menu" className="h-5 w-5" />
+        </button>
+        <div className="flex flex-1 items-center gap-3">
+          <h1 className="text-lg font-semibold tracking-tight">{activeTitle}</h1>
+        </div>
+        <div className="hidden md:block md:w-72">
+          <Input
+            type="search"
+            placeholder="검색..."
+            leftIcon={<Icon name="search" className="h-4 w-4" />}
+            rightSlot={<><Kbd>⌘</Kbd><Kbd className="ml-1">K</Kbd></>}
+          />
+        </div>
+        <button className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50" aria-label="알림">
+          <Icon name="bell" className="h-4 w-4" />
+          <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-zinc-950" />
+        </button>
+        <Button variant="ghost" size="icon" onClick={onToggleTheme} aria-label="테마 전환">
+          <Icon name={theme === "dark" ? "sun" : "moon"} className="h-4 w-4" />
+        </Button>
+        <Avatar src="https://i.pravatar.cc/64?img=64" fallback="조" />
+      </header>
+    );
+
+    // ========================================
+    // 📄  Section: 대시보드
+    // ========================================
+    const ViewsChart = () => {
+      const ref = useRef(null);
+      const chartRef = useRef(null);
+      useEffect(() => {
+        if (!ref.current) return;
+        const ctx = ref.current.getContext("2d");
+        const labels = Array.from({ length: 30 }, (_, i) => `4/${i + 1}`);
+        const data = [180,210,205,240,260,255,290,310,300,340,360,355,400,420,415,450,480,475,510,540,560,590,620,640,670,710,740,770,800,830];
+        const grad = ctx.createLinearGradient(0, 0, 0, 220);
+        grad.addColorStop(0, "rgba(24,24,27,0.18)");
+        grad.addColorStop(1, "rgba(24,24,27,0)");
+        chartRef.current = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [{
+              label: "조회수 (천)",
+              data,
+              borderColor: "#18181b",
+              backgroundColor: grad,
+              borderWidth: 2,
+              fill: true,
+              tension: 0.35,
+              pointRadius: 0,
+              pointHoverRadius: 4,
+              pointHoverBackgroundColor: "#18181b",
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { displayColors: false } },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: "#71717a", font: { size: 10 } } },
+              y: { grid: { color: "rgba(113,113,122,0.12)" }, ticks: { color: "#71717a", font: { size: 10 } } },
+            },
+          },
+        });
+        return () => chartRef.current && chartRef.current.destroy();
+      }, []);
+      return <div className="relative h-[260px]"><canvas ref={ref} /></div>;
+    };
+
+    const DashboardSection = () => (
+      <section id="dashboard" className="space-y-6 scroll-mt-20">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">안녕하세요, 조 튜브 님 👋</h2>
+          <p className="text-sm text-zinc-500">오늘의 채널 현황을 한눈에 확인해보세요.</p>
+        </div>
+
+        {/* Stat cards */}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {STATS.map((s) => (
+            <Card key={s.label}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="text-xs font-medium text-zinc-500">{s.label}</div>
+                  <Sparkline data={s.spark} positive={s.positive} />
+                </div>
+                <div className="mt-2 text-2xl font-bold tracking-tight tnum">{s.value}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs">
+                  <span className={cn("inline-flex items-center gap-0.5 font-medium", s.positive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
+                    <Icon name={s.positive ? "trending-up" : "trending-down"} className="h-3 w-3" />
+                    {s.positive ? "+" : ""}{s.delta}%
+                  </span>
+                  <span className="text-zinc-500">지난달 대비</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Chart + Top videos */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle>최근 30일 조회수</CardTitle>
+                <CardDescription>지난 30일간 채널 누적 조회수 추이입니다.</CardDescription>
+              </div>
+              <Badge variant="success">+18.2%</Badge>
+            </CardHeader>
+            <CardContent>
+              <ViewsChart />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>인기 영상 Top 5</CardTitle>
+              <CardDescription>이번 달 가장 많이 본 영상</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {TOP_VIDEOS.map((v, idx) => (
+                <div key={v.id} className="flex items-center gap-3">
+                  <div className="w-5 text-center text-sm font-semibold tabular-nums text-zinc-500">{idx + 1}</div>
+                  <img src={v.thumb} alt="" className="h-10 w-[68px] flex-none rounded-md object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{v.title}</div>
+                    <div className="text-xs text-zinc-500 tabular-nums">{v.views} views</div>
+                  </div>
+                  <Icon name="chevron-right" className="h-4 w-4 text-zinc-400" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+    );
+
+    // ========================================
+    // 📄  Section: 영상
+    // ========================================
+    const VideosSection = () => {
+      const [search, setSearch] = useState("");
+      const [statusFilter, setStatusFilter] = useState("all");
+      const [selected, setSelected] = useState({});
+
+      const statusBadge = (s) => {
+        if (s === "공개") return <Badge variant="default">공개</Badge>;
+        if (s === "비공개") return <Badge variant="outline">비공개</Badge>;
+        if (s === "검토중") return <Badge variant="warning">검토중</Badge>;
+        return <Badge variant="secondary">{s}</Badge>;
+      };
+
+      const filtered = VIDEOS.filter((v) => {
+        if (statusFilter !== "all" && v.status !== statusFilter) return false;
+        if (search && !v.title.toLowerCase().includes(search.toLowerCase())) return false;
+        return true;
+      });
+
+      const allChecked = filtered.length > 0 && filtered.every((v) => selected[v.id]);
+      const toggleAll = () => {
+        if (allChecked) setSelected({});
+        else setSelected(Object.fromEntries(filtered.map((v) => [v.id, true])));
+      };
+
+      return (
+        <section id="videos" className="space-y-4 scroll-mt-20">
+          <Card>
+            <CardHeader className="flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+              <div>
+                <CardTitle>영상 목록</CardTitle>
+                <CardDescription>업로드한 영상을 관리하고 상태를 변경할 수 있습니다.</CardDescription>
+              </div>
+              <Button>
+                <Icon name="plus" className="h-4 w-4" />
+                새 영상 업로드
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Filter row */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-[200px] flex-1">
+                  <Input
+                    placeholder="제목으로 검색..."
+                    leftIcon={<Icon name="search" className="h-4 w-4" />}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <Select
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  className="w-[140px]"
+                  options={[
+                    { value: "all", label: "전체 상태" },
+                    { value: "공개", label: "공개" },
+                    { value: "비공개", label: "비공개" },
+                    { value: "검토중", label: "검토중" },
+                  ]}
+                />
+                <Button variant="outline" size="md">
+                  <Icon name="calendar" className="h-4 w-4" />
+                  최근 30일
+                  <Icon name="chevron-down" className="h-4 w-4 text-zinc-500" />
+                </Button>
+                <Button variant="outline" size="md" className="ml-auto">
+                  <Icon name="filter" className="h-4 w-4" />
+                  필터
+                </Button>
+              </div>
+
+              {/* Table */}
+              <div className="rounded-lg border border-zinc-200 dark:border-zinc-800">
+                <Table>
+                  <THead>
+                    <TR>
+                      <TH className="w-10 px-3">
+                        <input type="checkbox" checked={allChecked} onChange={toggleAll} className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700" />
+                      </TH>
+                      <TH className="w-[88px]">썸네일</TH>
+                      <TH>제목</TH>
+                      <TH>상태</TH>
+                      <TH className="text-right">조회수</TH>
+                      <TH className="text-right">좋아요</TH>
+                      <TH>업로드일</TH>
+                      <TH className="w-10" />
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {filtered.map((v) => (
+                      <TR key={v.id}>
+                        <TD className="w-10 px-3">
+                          <input type="checkbox" checked={!!selected[v.id]} onChange={() => setSelected((s) => ({ ...s, [v.id]: !s[v.id] }))} className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700" />
+                        </TD>
+                        <TD>
+                          <img src={v.thumb} alt="" className="h-[44px] w-[78px] rounded-md object-cover" />
+                        </TD>
+                        <TD className="max-w-[260px] truncate text-sm font-medium">{v.title}</TD>
+                        <TD>{statusBadge(v.status)}</TD>
+                        <TD className="text-right tabular-nums text-sm">{fmtNum(v.views)}</TD>
+                        <TD className="text-right tabular-nums text-sm">{fmtNum(v.likes)}</TD>
+                        <TD className="text-sm text-zinc-600 dark:text-zinc-400 tabular-nums">{v.date}</TD>
+                        <TD className="w-10">
+                          <DropdownMenu
+                            trigger={<Button variant="ghost" size="icon" aria-label="더보기"><Icon name="more-horizontal" className="h-4 w-4" /></Button>}
+                            items={[
+                              { label: "보기", icon: <Icon name="eye" className="h-4 w-4" /> },
+                              { label: "편집", icon: <Icon name="edit" className="h-4 w-4" /> },
+                              { label: "재생", icon: <Icon name="play" className="h-4 w-4" /> },
+                              { separator: true },
+                              { label: "삭제", icon: <Icon name="trash" className="h-4 w-4" />, destructive: true },
+                            ]}
+                          />
+                        </TD>
+                      </TR>
+                    ))}
+                    {filtered.length === 0 && (
+                      <TR>
+                        <TD className="py-10 text-center text-sm text-zinc-500" colSpan={8}>조건에 맞는 영상이 없습니다.</TD>
+                      </TR>
+                    )}
+                  </TBody>
+                </Table>
+              </div>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between text-sm">
+                <div className="text-zinc-500">
+                  <span className="tabular-nums">1–{filtered.length}</span> / <span className="tabular-nums">24</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" disabled>
+                    <Icon name="chevron-left" className="h-4 w-4" />이전
+                  </Button>
+                  <Button variant="ghost" size="sm">
+                    다음<Icon name="chevron-right" className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      );
+    };
+
+    // ========================================
+    // 📄  Section: 댓글
+    // ========================================
+    const CommentsSection = () => {
+      return (
+        <section id="comments" className="space-y-4 scroll-mt-20">
+          <Card>
+            <CardHeader>
+              <CardTitle>답글 대기 중인 댓글</CardTitle>
+              <CardDescription>최근 24시간 내 답글이 필요한 댓글입니다. AI 추천 답변을 활용해보세요.</CardDescription>
+            </CardHeader>
+            <CardContent className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              {COMMENTS.map((c) => (
+                <div key={c.id} className="flex gap-3 py-4 first:pt-0 last:pb-0">
+                  <Avatar src={c.avatar} fallback={c.name[0]} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-sm font-medium">{c.name}</span>
+                      <span className="text-xs text-zinc-500">{c.handle}</span>
+                      <span className="text-xs text-zinc-500">· {c.time}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">{c.text}</p>
+
+                    {c.suggestion && (
+                      <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-950/40">
+                        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                          <Icon name="sparkles" className="h-3 w-3" />
+                          AI 추천 답변
+                        </div>
+                        <p className="mt-1.5 text-sm text-zinc-700 dark:text-zinc-300">{c.suggestion}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button size="sm"><Icon name="check" className="h-3.5 w-3.5" />수락</Button>
+                          <Button size="sm" variant="outline"><Icon name="edit" className="h-3.5 w-3.5" />수정</Button>
+                          <Button size="sm" variant="ghost"><Icon name="x" className="h-3.5 w-3.5" />거부</Button>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-2 flex gap-1">
+                      <Button size="sm" variant="ghost"><Icon name="message-square" className="h-3.5 w-3.5" />답글</Button>
+                      <Button size="sm" variant="ghost"><Icon name="flag" className="h-3.5 w-3.5" />신고</Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      );
+    };
+
+    // ========================================
+    // 📄  Section: 수익
+    // ========================================
+    const RevenueChart = () => {
+      const ref = useRef(null);
+      const chartRef = useRef(null);
+      useEffect(() => {
+        if (!ref.current) return;
+        const ctx = ref.current.getContext("2d");
+        const labels = ["11월","12월","1월","2월","3월","4월"];
+        const data = [12.4, 14.1, 13.8, 15.6, 17.2, 18.5];
+        chartRef.current = new Chart(ctx, {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{
+              data,
+              backgroundColor: "#18181b",
+              hoverBackgroundColor: "#3f3f46",
+              borderRadius: 6,
+              barThickness: 22,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { displayColors: false, callbacks: { label: (c) => `₩${c.parsed.y.toFixed(1)}M` } } },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: "#71717a", font: { size: 10 } } },
+              y: { grid: { color: "rgba(113,113,122,0.12)" }, ticks: { color: "#71717a", font: { size: 10 }, callback: (v) => `${v}M` } },
+            },
+          },
+        });
+        return () => chartRef.current && chartRef.current.destroy();
+      }, []);
+      return <div className="relative h-[220px]"><canvas ref={ref} /></div>;
+    };
+
+    const RevenueSection = () => {
+      const [tab, setTab] = useState("month");
+      const total = REVENUE_SOURCES.reduce((a, s) => a + s.amount, 0);
+      return (
+        <section id="revenue" className="space-y-4 scroll-mt-20">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <Card className="lg:col-span-3">
+              <CardHeader className="flex-row items-start justify-between space-y-0">
+                <div>
+                  <CardTitle>월별 수익</CardTitle>
+                  <CardDescription>최근 6개월 채널 수익 추이</CardDescription>
+                </div>
+                <Tabs
+                  value={tab}
+                  onChange={setTab}
+                  tabs={[
+                    { value: "month", label: "월별" },
+                    { value: "quarter", label: "분기" },
+                    { value: "year", label: "연간" },
+                  ]}
+                />
+              </CardHeader>
+              <CardContent>
+                <RevenueChart />
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>수익 소스</CardTitle>
+                <CardDescription>이번 달 기준</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4">
+                  <div className="text-xs text-zinc-500">총 수익</div>
+                  <div className="text-2xl font-bold tracking-tight tabular-nums">{fmtKRW(total)}</div>
+                </div>
+                <div className="space-y-3">
+                  {REVENUE_SOURCES.map((s) => (
+                    <div key={s.name}>
+                      <div className="flex items-baseline justify-between text-sm">
+                        <span className="font-medium">{s.name}</span>
+                        <span className="tabular-nums">{fmtKRW(s.amount)} <span className="text-xs text-zinc-500">· {s.share}%</span></span>
+                      </div>
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                        <div className="h-full rounded-full bg-zinc-900 dark:bg-zinc-50" style={{ width: `${s.share}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      );
+    };
+
+    // ========================================
+    // 📄  Section: 구독자
+    // ========================================
+    const SubscribersGrowthChart = () => {
+      const ref = useRef(null);
+      const chartRef = useRef(null);
+      useEffect(() => {
+        if (!ref.current) return;
+        const ctx = ref.current.getContext("2d");
+        const labels = Array.from({ length: 12 }, (_, i) => `${i+1}월`);
+        const data = [180,195,208,221,234,242,251,260,267,272,278,284];
+        const grad = ctx.createLinearGradient(0, 0, 0, 200);
+        grad.addColorStop(0, "rgba(24,24,27,0.18)");
+        grad.addColorStop(1, "rgba(24,24,27,0)");
+        chartRef.current = new Chart(ctx, {
+          type: "line",
+          data: { labels, datasets: [{ data, borderColor: "#18181b", backgroundColor: grad, borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0 }] },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false }, tooltip: { displayColors: false, callbacks: { label: (c) => `${c.parsed.y}K` } } },
+            scales: {
+              x: { grid: { display: false }, ticks: { color: "#71717a", font: { size: 10 } } },
+              y: { grid: { color: "rgba(113,113,122,0.12)" }, ticks: { color: "#71717a", font: { size: 10 }, callback: (v) => `${v}K` } },
+            },
+          },
+        });
+        return () => chartRef.current && chartRef.current.destroy();
+      }, []);
+      return <div className="relative h-[220px]"><canvas ref={ref} /></div>;
+    };
+
+    const SubscribersSection = () => (
+      <section id="subscribers" className="space-y-4 scroll-mt-20">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex-row items-start justify-between space-y-0">
+              <div>
+                <CardTitle>구독자 성장 추이</CardTitle>
+                <CardDescription>최근 12개월 누적 구독자 수 (천 명)</CardDescription>
+              </div>
+              <Badge variant="success">+47K YoY</Badge>
+            </CardHeader>
+            <CardContent>
+              <SubscribersGrowthChart />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>최근 구독자</CardTitle>
+              <CardDescription>최근 100명 중 6명 표시</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {SUBSCRIBERS.map((s) => (
+                <div key={s.handle} className="flex items-center gap-3">
+                  <Avatar src={s.avatar} fallback={s.name[0]} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{s.name}</div>
+                    <div className="truncate text-xs text-zinc-500">{s.handle}</div>
+                  </div>
+                  <div className="text-xs text-zinc-500 tabular-nums">{s.date}</div>
+                </div>
+              ))}
+            </CardContent>
+            <CardFooter>
+              <Button variant="outline" size="sm" className="w-full">더 보기</Button>
+            </CardFooter>
+          </Card>
+        </div>
+      </section>
+    );
+
+    // ========================================
+    // 📄  Section: 설정
+    // ========================================
+    const SettingsSection = () => {
+      const [name, setName] = useState("joe튜브");
+      const [category, setCategory] = useState("travel");
+      const [desc, setDesc] = useState("전 세계를 누비는 가성비 여행 채널입니다. 매주 화요일/금요일 업로드.");
+      return (
+        <section id="settings" className="space-y-4 scroll-mt-20">
+          <Card>
+            <CardHeader>
+              <CardTitle>채널 정보</CardTitle>
+              <CardDescription>공개 프로필에 표시되는 채널 정보를 수정합니다.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">채널명</label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} />
+                  <p className="text-xs text-zinc-500">시청자에게 표시되는 채널 이름입니다.</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">카테고리</label>
+                  <Select
+                    value={category}
+                    onChange={setCategory}
+                    options={[
+                      { value: "travel", label: "여행" },
+                      { value: "food", label: "음식" },
+                      { value: "vlog", label: "브이로그" },
+                      { value: "tech", label: "테크" },
+                    ]}
+                  />
+                  <p className="text-xs text-zinc-500">콘텐츠 추천 알고리즘에 영향을 줍니다.</p>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <label className="text-sm font-medium">채널 설명</label>
+                  <textarea
+                    value={desc}
+                    onChange={(e) => setDesc(e.target.value)}
+                    rows={3}
+                    className="flex w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm placeholder:text-zinc-500 focus-ring dark:border-zinc-800 dark:bg-zinc-950"
+                  />
+                  <p className="text-xs text-zinc-500">최대 1,000자까지 입력 가능합니다.</p>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter className="justify-end gap-2">
+              <Button variant="outline">취소</Button>
+              <Button>변경사항 저장</Button>
+            </CardFooter>
+          </Card>
+
+          <Card className="border-red-200 dark:border-red-900/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+                <Icon name="alert-triangle" className="h-4 w-4" />
+                위험 영역
+              </CardTitle>
+              <CardDescription>이 작업은 되돌릴 수 없습니다. 신중히 진행하세요.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50/40 p-4 dark:border-red-900/50 dark:bg-red-500/5">
+                <div>
+                  <div className="text-sm font-medium">채널 삭제</div>
+                  <div className="text-xs text-zinc-500">모든 영상, 댓글, 구독자 데이터가 영구 삭제됩니다.</div>
+                </div>
+                <Button variant="destructive">
+                  <Icon name="trash" className="h-4 w-4" />
+                  채널 삭제
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+      );
+    };
+
+    // ========================================
+    // 🚀  App
+    // ========================================
+    const App = () => {
+      const { theme, toggle } = useTheme();
+      const [active, setActive] = useState(() => {
+        const h = (window.location.hash || "").replace("#", "");
+        return SECTION_TITLES[h] ? h : "dashboard";
+      });
+      const [mobileOpen, setMobileOpen] = useState(false);
+
+      // Sync active section with hash + scroll position
+      useEffect(() => {
+        const onHash = () => {
+          const h = (window.location.hash || "").replace("#", "");
+          if (SECTION_TITLES[h]) setActive(h);
+        };
+        window.addEventListener("hashchange", onHash);
+        return () => window.removeEventListener("hashchange", onHash);
+      }, []);
+
+      // IntersectionObserver: update active when scrolling
+      useEffect(() => {
+        const ids = NAV_ITEMS.map((n) => n.id);
+        const els = ids.map((id) => document.getElementById(id)).filter(Boolean);
+        if (els.length === 0) return;
+        const obs = new IntersectionObserver(
+          (entries) => {
+            const visible = entries
+              .filter((e) => e.isIntersecting)
+              .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+            if (visible[0]) setActive(visible[0].target.id);
+          },
+          { rootMargin: "-30% 0px -55% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] }
+        );
+        els.forEach((el) => obs.observe(el));
+        return () => obs.disconnect();
+      }, []);
+
+      const handleSelect = (id) => {
+        setActive(id);
+      };
+
+      return (
+        <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50">
+          <Sidebar
+            active={active}
+            onSelect={handleSelect}
+            mobileOpen={mobileOpen}
+            onCloseMobile={() => setMobileOpen(false)}
+          />
+
+          <div className="lg:pl-[260px]">
+            <Topbar
+              activeTitle={SECTION_TITLES[active] || "대시보드"}
+              theme={theme}
+              onToggleTheme={toggle}
+              onOpenMobile={() => setMobileOpen(true)}
+            />
+
+            <main className="mx-auto max-w-7xl space-y-10 p-4 sm:p-6 lg:p-8">
+              <DashboardSection />
+              <VideosSection />
+              <CommentsSection />
+              <RevenueSection />
+              <SubscribersSection />
+              <SettingsSection />
+
+              <footer className="pt-6 pb-4 text-center text-xs text-zinc-500">
+                © 2026 joe튜브 Admin · Built with shadcn/ui aesthetic
+              </footer>
+            </main>
+          </div>
+        </div>
+      );
+    };
+
+    // ========================================
+    // 🏁  Render
+    // ========================================
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

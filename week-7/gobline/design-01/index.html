@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>기리고 (GIRIGO) — Netflix 오리지널 시리즈</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    html, body {
+      background-color: #0a0606;
+      color: #e8d9c8;
+      font-family: 'Noto Sans KR', 'Pretendard', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ---------- 분위기용 배경 노이즈 ---------- */
+    .grain::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 50;
+      opacity: 0.18;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    }
+
+    /* ---------- 비네팅 ---------- */
+    .vignette::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.85) 100%);
+    }
+
+    /* ---------- 깜빡임 (불길한 등) ---------- */
+    @keyframes flicker {
+      0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100% { opacity: 1; }
+      20%, 21.999%, 63%, 63.999%, 65%, 69.999% { opacity: 0.55; }
+    }
+    .flicker { animation: flicker 6s infinite; }
+
+    /* ---------- 한자 글리치 ---------- */
+    @keyframes glitch {
+      0%, 95%, 100% { transform: translate(0,0) skew(0deg); filter: none; }
+      96% { transform: translate(-2px, 1px) skew(-1deg); filter: hue-rotate(20deg); }
+      97% { transform: translate(2px, -1px) skew(1deg); filter: hue-rotate(-20deg); }
+      98% { transform: translate(-1px, 2px); }
+    }
+    .glitch { animation: glitch 5s infinite; }
+
+    /* ---------- 떠다니는 부적 ---------- */
+    @keyframes drift {
+      0%, 100% { transform: translateY(0px) rotate(var(--r, 0deg)); }
+      50%      { transform: translateY(-12px) rotate(calc(var(--r, 0deg) + 2deg)); }
+    }
+    .drift { animation: drift 8s ease-in-out infinite; }
+
+    /* ---------- 호흡하는 핏빛 빛 ---------- */
+    @keyframes pulseBlood {
+      0%, 100% { opacity: 0.35; transform: scale(1); }
+      50%      { opacity: 0.65; transform: scale(1.04); }
+    }
+    .pulse-blood { animation: pulseBlood 4.5s ease-in-out infinite; }
+
+    /* ---------- 페이드 인 ---------- */
+    .reveal       { opacity: 0; transform: translateY(28px); transition: opacity 1.1s ease, transform 1.1s ease; }
+    .reveal.show  { opacity: 1; transform: translateY(0); }
+
+    /* ---------- 거대 타이틀 텍스처 ---------- */
+    .title-gore {
+      background: linear-gradient(180deg, #f3e7d6 0%, #d2b59a 35%, #6b1717 75%, #2a0606 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.04em;
+      text-shadow:
+        0 0 60px rgba(120, 0, 0, 0.45);
+    }
+
+    /* ---------- 핏자국 ---------- */
+    .blood-drip {
+      background:
+        radial-gradient(ellipse at 50% 0%, #6b0d0d 0%, #3a0606 35%, transparent 70%);
+      filter: blur(0.4px);
+    }
+
+    /* ---------- 카운트다운 글자 ---------- */
+    .digit {
+      font-family: 'Courier New', monospace;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.05em;
+    }
+
+    /* ---------- 스크롤바 (다크) ---------- */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #0a0606; }
+    ::-webkit-scrollbar-thumb { background: #3a0606; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #6b0d0d; }
+
+    /* ---------- 모달 페이드인 ---------- */
+    @keyframes modalIn {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .modal-in { animation: modalIn 0.35s ease-out; }
+  </style>
+</head>
+<body class="grain">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    // ========================================
+    // 🔣 CONSTANTS / DATA
+    // ========================================
+
+    const CAST = [
+      { name: '전소니',  role: "무당 '핫살'",       note: '특별출연',   accent: '#a40d0d' },
+      { name: '강미나',  role: "주인공 '서이안'",   note: '소원을 빈 자',accent: '#7a1414' },
+      { name: '백선호',  role: "이안의 동급생 '윤주'", note: '의심하는 자',accent: '#5e0f0f' },
+      { name: '현우석',  role: "전학생 '도경'",     note: '앱을 퍼뜨린 자',accent: '#8a1a1a' },
+      { name: '이효제',  role: "담임 '하 선생'",     note: '오래된 비밀',accent: '#4a0a0a' },
+    ];
+
+    const POINTS = [
+      {
+        kanji: '願',
+        title: '디지털 부적, 아날로그 저주',
+        body: '스마트폰 앱 UI와 한국 무속의 부적·진언이 한 화면에서 충돌한다. 박윤서 감독이 직접 디자인한 가짜 앱 인터페이스는 보는 순간 손이 차가워진다.',
+      },
+      {
+        kanji: '命',
+        title: '째깍이는 카운트다운',
+        body: '시즌 8화 내내 단 한 번도 멈추지 않는 타이머. 화면 어디에도 "남은 시간"은 항상 떠 있다. 시청자에게도 시간이 부족하다.',
+      },
+      {
+        kanji: '咒',
+        title: '소원의 댓가',
+        body: '소원을 빈 자가 죽는 게 아니다. "그를 사랑한 자"가 대신 죽을 수도 있다 — 시즌 후반 밝혀지는 규칙은 모든 인물 관계를 뒤집는다.',
+      },
+    ];
+
+    // ========================================
+    // 🎨 DESIGN SYSTEM COMPONENTS
+    // ========================================
+
+    function Button({ variant = 'primary', size = 'md', className = '', children, ...props }) {
+      const sizes = {
+        sm: 'px-4 py-2 text-sm',
+        md: 'px-6 py-3 text-base',
+        lg: 'px-8 py-4 text-lg',
+      };
+      const variants = {
+        primary:
+          'bg-[#a40d0d] text-[#f3e7d6] hover:bg-[#c41616] shadow-[0_0_30px_rgba(164,13,13,0.45)] hover:shadow-[0_0_50px_rgba(196,22,22,0.7)]',
+        secondary:
+          'bg-transparent border border-[#e8d9c8]/40 text-[#e8d9c8] hover:border-[#e8d9c8] hover:bg-[#e8d9c8]/5',
+        ghost:
+          'bg-transparent text-[#e8d9c8]/70 hover:text-[#e8d9c8]',
+      };
+      return (
+        <button
+          {...props}
+          className={`inline-flex items-center justify-center gap-2 font-semibold tracking-wider uppercase transition-all duration-300 ${sizes[size]} ${variants[variant]} ${className}`}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ className = '', children, ...props }) {
+      return (
+        <div
+          {...props}
+          className={`relative bg-gradient-to-b from-[#1a0a0a]/80 to-[#0a0606]/90 border border-[#3a0606]/60 backdrop-blur-sm ${className}`}
+        >
+          {children}
+        </div>
+      );
+    }
+
+    function Badge({ children, className = '' }) {
+      return (
+        <span
+          className={`inline-flex items-center gap-1.5 px-3 py-1 text-[10px] font-bold tracking-[0.3em] uppercase border border-[#a40d0d]/60 text-[#e8d9c8] bg-[#a40d0d]/10 ${className}`}
+        >
+          {children}
+        </span>
+      );
+    }
+
+    function Modal({ isOpen, onClose, title, children }) {
+      useEffect(() => {
+        if (!isOpen) return;
+        const onKey = (e) => e.key === 'Escape' && onClose();
+        document.addEventListener('keydown', onKey);
+        document.body.style.overflow = 'hidden';
+        return () => {
+          document.removeEventListener('keydown', onKey);
+          document.body.style.overflow = '';
+        };
+      }, [isOpen, onClose]);
+
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/85 backdrop-blur-md"
+            onClick={onClose}
+            aria-hidden
+          />
+          <div className="relative w-full max-w-md modal-in">
+            <Card className="p-8 border-[#a40d0d]/70 shadow-[0_0_80px_rgba(164,13,13,0.5)]">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-4 py-1 bg-[#0a0606] border border-[#a40d0d]/60">
+                <span className="text-[10px] tracking-[0.3em] text-[#a40d0d] font-bold">{title}</span>
+              </div>
+              {children}
+              <button
+                onClick={onClose}
+                className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center text-[#e8d9c8]/60 hover:text-[#a40d0d] transition"
+                aria-label="닫기"
+              >
+                ✕
+              </button>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // 🪶 SVG: 부적 / 한자 패턴
+    // ========================================
+
+    function TalismanSVG({ className = '', accent = '#a40d0d' }) {
+      // 한국 부적 모티프: 세로 직사각형, 한자 + 진언 + 세로선
+      return (
+        <svg viewBox="0 0 100 220" className={className} aria-hidden>
+          <defs>
+            <linearGradient id="paper" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#e8d9c8" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#3a0606" stopOpacity="0.08" />
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="96" height="216" fill="url(#paper)" stroke={accent} strokeOpacity="0.6" strokeWidth="1" />
+          {/* 상단 한자 */}
+          <text x="50" y="40" textAnchor="middle" fontSize="34" fill={accent} fillOpacity="0.85" fontFamily="serif" fontWeight="900">願</text>
+          {/* 진언 세로선들 */}
+          <g stroke={accent} strokeOpacity="0.55" strokeWidth="0.8">
+            <line x1="30" y1="60" x2="30" y2="180" />
+            <line x1="50" y1="55" x2="50" y2="180" />
+            <line x1="70" y1="60" x2="70" y2="180" />
+          </g>
+          {/* 작은 부호 */}
+          <g fill={accent} fillOpacity="0.7">
+            <circle cx="30" cy="68" r="2" />
+            <circle cx="50" cy="63" r="2.4" />
+            <circle cx="70" cy="68" r="2" />
+            <circle cx="50" cy="190" r="3" />
+          </g>
+          {/* 하단 진언 */}
+          <text x="50" y="208" textAnchor="middle" fontSize="10" fill={accent} fillOpacity="0.7" fontFamily="serif" letterSpacing="2">急急如律令</text>
+        </svg>
+      );
+    }
+
+    function CornerHanja({ char, className = '' }) {
+      return (
+        <span
+          className={`pointer-events-none select-none font-serif font-black ${className}`}
+          aria-hidden
+        >
+          {char}
+        </span>
+      );
+    }
+
+    // ========================================
+    // ⏱  COUNTDOWN HOOK
+    // ========================================
+
+    // 영화 속 카운트다운 모티프: 임의의 23시간 미만 타이머가 계속 줄어듦.
+    function useDoomCountdown(initialSeconds = 23 * 3600 + 47 * 60 + 13) {
+      const [s, setS] = useState(initialSeconds);
+      useEffect(() => {
+        const id = setInterval(() => {
+          setS((prev) => (prev <= 1 ? 23 * 3600 + 59 * 60 + 59 : prev - 1));
+        }, 1000);
+        return () => clearInterval(id);
+      }, []);
+      const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      return { hh, mm, ss, raw: s };
+    }
+
+    // ========================================
+    // 👁  REVEAL ON SCROLL HOOK
+    // ========================================
+
+    function useReveal() {
+      const ref = useRef(null);
+      useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const io = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                e.target.classList.add('show');
+                io.unobserve(e.target);
+              }
+            });
+          },
+          { threshold: 0.15 }
+        );
+        io.observe(el);
+        return () => io.disconnect();
+      }, []);
+      return ref;
+    }
+
+    // ========================================
+    // 🩸 HERO SECTION
+    // ========================================
+
+    function HeroSection({ onWishClick }) {
+      const { hh, mm, ss } = useDoomCountdown();
+
+      return (
+        <section className="relative min-h-screen w-full overflow-hidden vignette">
+          {/* 배경 그라디언트 + 핏빛 호흡 */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a0606] via-[#160707] to-[#0a0606]" />
+          <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[80vw] h-[80vw] max-w-[900px] max-h-[900px] rounded-full bg-[radial-gradient(circle,_#6b0d0d_0%,_transparent_60%)] pulse-blood" />
+
+          {/* 핏자국 (상단에서 흘러내림) */}
+          <div className="absolute top-0 left-[12%] w-[2px] h-[18vh] bg-gradient-to-b from-[#7a1414] via-[#a40d0d]/50 to-transparent opacity-70" />
+          <div className="absolute top-0 left-[12%] w-[10px] h-[6px] rounded-full bg-[#a40d0d]/80" style={{ top: '17vh' }} />
+          <div className="absolute top-0 right-[18%] w-[1px] h-[24vh] bg-gradient-to-b from-[#7a1414] to-transparent opacity-50" />
+
+          {/* 떠다니는 부적 */}
+          <div className="absolute top-[14%] left-[6%] w-16 md:w-24 opacity-50 drift" style={{ '--r': '-8deg' }}>
+            <TalismanSVG />
+          </div>
+          <div className="absolute bottom-[18%] right-[5%] w-14 md:w-20 opacity-40 drift" style={{ '--r': '12deg', animationDelay: '2s' }}>
+            <TalismanSVG />
+          </div>
+
+          {/* 코너 한자 */}
+          <CornerHanja
+            char="願"
+            className="absolute top-6 left-6 text-[80px] md:text-[140px] text-[#a40d0d]/15 leading-none glitch"
+          />
+          <CornerHanja
+            char="命"
+            className="absolute bottom-6 right-6 text-[80px] md:text-[140px] text-[#a40d0d]/15 leading-none glitch"
+          />
+
+          {/* 상단 NETFLIX 헤더 */}
+          <header className="relative z-10 flex items-center justify-between px-6 md:px-12 pt-6 md:pt-8">
+            <div className="flex items-center gap-3">
+              <span className="text-[#e50914] text-2xl md:text-3xl font-black tracking-tighter flicker">N</span>
+              <span className="text-[10px] md:text-xs tracking-[0.4em] text-[#e8d9c8]/70 uppercase">Netflix Original Series</span>
+            </div>
+            <div className="hidden md:flex items-center gap-2">
+              <Badge>2026.04.24 글로벌 공개</Badge>
+            </div>
+          </header>
+
+          {/* 메인 카피 */}
+          <div className="relative z-10 flex flex-col items-center justify-center px-6 text-center" style={{ minHeight: 'calc(100vh - 80px)' }}>
+            <div className="mb-4 md:mb-6 flex flex-col items-center gap-3 reveal show">
+              <Badge>한국형 오컬트 호러 · 8부작</Badge>
+              <span className="text-[10px] md:text-xs tracking-[0.5em] text-[#e8d9c8]/60 uppercase">Coming to Netflix · April 24, 2026</span>
+            </div>
+
+            {/* 거대 한글 타이틀 */}
+            <h1 className="title-gore font-black leading-[0.85] text-[24vw] md:text-[18vw] lg:text-[15vw] reveal show">
+              기리고
+            </h1>
+
+            {/* 영문 보조 타이틀 */}
+            <div className="mt-2 md:mt-4 flex items-center gap-4 reveal show">
+              <span className="hidden md:block w-16 h-px bg-[#a40d0d]/60" />
+              <span className="text-[#e8d9c8]/80 text-sm md:text-lg tracking-[0.7em] md:tracking-[1em] font-light uppercase">G I R I G O</span>
+              <span className="hidden md:block w-16 h-px bg-[#a40d0d]/60" />
+            </div>
+
+            {/* 태그라인 */}
+            <p className="mt-8 md:mt-12 max-w-2xl text-base md:text-2xl text-[#e8d9c8]/90 leading-relaxed font-light reveal show">
+              <span className="block">네 이름을 적고, 소원을 말해.</span>
+              <span className="block mt-1 text-[#c44848] font-medium">그리고 — 끝까지 살아남아.</span>
+            </p>
+
+            {/* 카운트다운 */}
+            <div className="mt-10 md:mt-14 flex flex-col items-center reveal show">
+              <span className="text-[10px] md:text-xs tracking-[0.5em] text-[#a40d0d] uppercase mb-3">남은 시간 · 0이 되는 순간</span>
+              <div className="flex items-center gap-2 md:gap-4">
+                {[hh, mm, ss].map((unit, i) => (
+                  <React.Fragment key={i}>
+                    <div className="px-3 py-2 md:px-5 md:py-3 border border-[#a40d0d]/50 bg-black/60 min-w-[64px] md:min-w-[88px]">
+                      <div className="digit text-3xl md:text-5xl font-bold text-[#e8d9c8]">{unit}</div>
+                      <div className="text-[8px] md:text-[10px] tracking-[0.3em] text-[#a40d0d]/80 mt-1">
+                        {['HRS', 'MIN', 'SEC'][i]}
+                      </div>
+                    </div>
+                    {i < 2 && <span className="text-2xl md:text-4xl text-[#a40d0d] flicker">:</span>}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            {/* CTA */}
+            <div className="mt-10 md:mt-14 flex flex-col sm:flex-row gap-4 reveal show">
+              <Button variant="primary" size="lg" onClick={onWishClick}>
+                소원 빌기 ▸
+              </Button>
+              <Button variant="secondary" size="lg" onClick={() => document.getElementById('synopsis')?.scrollIntoView({ behavior: 'smooth' })}>
+                예고편 보기
+              </Button>
+            </div>
+
+            {/* 스크롤 힌트 */}
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-60">
+              <span className="text-[10px] tracking-[0.4em] text-[#e8d9c8]/70 uppercase">Scroll</span>
+              <div className="w-px h-10 bg-gradient-to-b from-[#e8d9c8]/70 to-transparent" />
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    // ========================================
+    // 📜 SYNOPSIS SECTION
+    // ========================================
+
+    function SynopsisSection() {
+      const ref = useReveal();
+      return (
+        <section id="synopsis" ref={ref} className="reveal relative py-24 md:py-40 px-6 md:px-12 overflow-hidden">
+          <CornerHanja char="咒" className="absolute -top-4 right-4 text-[160px] md:text-[260px] text-[#a40d0d]/8 leading-none" />
+
+          <div className="relative max-w-4xl mx-auto">
+            <div className="flex items-center gap-3 mb-8">
+              <span className="w-10 h-px bg-[#a40d0d]" />
+              <span className="text-xs tracking-[0.5em] text-[#a40d0d] uppercase">Synopsis</span>
+            </div>
+
+            <p className="text-3xl md:text-5xl font-light leading-[1.3] text-[#f3e7d6] mb-10">
+              "소원을 빌면 이뤄진다.
+              <br />
+              <span className="text-[#c44848]">단, 시간이 다 되기 전에.</span>"
+            </p>
+
+            <div className="space-y-6 text-[#e8d9c8]/85 text-base md:text-lg leading-relaxed font-light">
+              <p>
+                고등학교 2학년 <span className="text-[#f3e7d6] font-medium">서이안</span>(강미나). 어느 날 밤 SNS 친구로부터 정체불명의 앱 <span className="text-[#c44848] font-medium">'기리고'</span>의 링크가 도착한다. 이름과 생년월일, 그리고 카메라를 향해 빈 소원 — 단 그것뿐이다.
+              </p>
+              <p>
+                다음 날 아침, 거짓말처럼 소원은 이루어진다. 그러나 잠금화면 한가운데 떠 있는 붉은 카운트다운은 이미 시작되어 있다. <span className="text-[#f3e7d6] font-medium">23:59:59.</span>
+              </p>
+              <p>
+                앱은 지운다고 사라지지 않는다. 친구에게 보여주려 해도 그들 눈에는 보이지 않는다. 0이 된 자들의 부고만이 점점 가까워질 뿐이다.
+              </p>
+              <p className="text-[#c44848] font-medium pt-4 border-t border-[#3a0606]/60">
+                이안과 친구들은 마지막 기회를 잡기 위해 80년대 한 무당이 남긴 기록을 쫓는다. 그 끝에서 만나게 되는 진실은 — 기리고는 앱이 아니라, 아주 오래된 누군가가 부르는 <span className="italic">이름</span>이라는 것.
+              </p>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    // ========================================
+    // 🎭 CAST SECTION
+    // ========================================
+
+    function CastCard({ person, index }) {
+      const ref = useReveal();
+      return (
+        <div
+          ref={ref}
+          className="reveal"
+          style={{ transitionDelay: `${index * 80}ms` }}
+        >
+          <Card className="group p-6 h-full hover:border-[#a40d0d]/80 hover:shadow-[0_0_40px_rgba(164,13,13,0.35)] transition-all duration-500 cursor-default">
+            {/* 추상적 인물 실루엣 (SVG) */}
+            <div className="relative aspect-[3/4] mb-5 overflow-hidden bg-gradient-to-b from-[#1a0a0a] to-[#0a0606] border border-[#3a0606]/60">
+              <svg viewBox="0 0 100 130" className="absolute inset-0 w-full h-full">
+                <defs>
+                  <radialGradient id={`g-${index}`} cx="50%" cy="35%" r="55%">
+                    <stop offset="0%" stopColor={person.accent} stopOpacity="0.5" />
+                    <stop offset="60%" stopColor={person.accent} stopOpacity="0.08" />
+                    <stop offset="100%" stopColor="#0a0606" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <rect width="100" height="130" fill={`url(#g-${index})`} />
+                {/* 실루엣 머리/어깨 */}
+                <ellipse cx="50" cy="48" rx="16" ry="20" fill="#0a0606" />
+                <path d="M20,130 Q20,90 50,80 Q80,90 80,130 Z" fill="#0a0606" />
+                {/* 눈 자리에 작은 핏빛 점 */}
+                <circle cx="44" cy="46" r="0.8" fill={person.accent} opacity="0.9" />
+                <circle cx="56" cy="46" r="0.8" fill={person.accent} opacity="0.9" />
+              </svg>
+              {/* 호버 시 부적 오버레이 */}
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                <CornerHanja char="命" className="text-[120px] text-[#a40d0d]/30" />
+              </div>
+              <div className="absolute bottom-2 right-2 text-[9px] tracking-[0.3em] text-[#e8d9c8]/40 uppercase">
+                #{String(index + 1).padStart(2, '0')}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] tracking-[0.4em] text-[#a40d0d]/80 uppercase mb-1">{person.note}</p>
+              <h3 className="text-2xl font-bold text-[#f3e7d6] mb-1">{person.name}</h3>
+              <p className="text-sm text-[#e8d9c8]/60 leading-relaxed">{person.role}</p>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    function CastSection() {
+      const headerRef = useReveal();
+      return (
+        <section className="relative py-24 md:py-40 px-6 md:px-12 bg-gradient-to-b from-[#0a0606] via-[#0d0707] to-[#0a0606]">
+          <div className="max-w-7xl mx-auto">
+            <div ref={headerRef} className="reveal mb-12 md:mb-16">
+              <div className="flex items-center gap-3 mb-6">
+                <span className="w-10 h-px bg-[#a40d0d]" />
+                <span className="text-xs tracking-[0.5em] text-[#a40d0d] uppercase">Cast</span>
+              </div>
+              <h2 className="text-4xl md:text-6xl font-light text-[#f3e7d6]">
+                <span className="text-[#c44848]">소원을 빈</span> 다섯 사람.
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 md:gap-6">
+              {CAST.map((p, i) => (
+                <CastCard key={p.name} person={p} index={i} />
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    // ========================================
+    // 🎬 POINTS / DIRECTOR SECTION
+    // ========================================
+
+    function PointsSection() {
+      const headerRef = useReveal();
+      return (
+        <section className="relative py-24 md:py-40 px-6 md:px-12 overflow-hidden">
+          <CornerHanja char="願" className="absolute -bottom-10 -left-6 text-[200px] md:text-[320px] text-[#a40d0d]/8 leading-none" />
+
+          <div className="relative max-w-6xl mx-auto">
+            <div ref={headerRef} className="reveal mb-12 md:mb-20">
+              <div className="flex items-center gap-3 mb-6">
+                <span className="w-10 h-px bg-[#a40d0d]" />
+                <span className="text-xs tracking-[0.5em] text-[#a40d0d] uppercase">Director's Note · 박윤서</span>
+              </div>
+              <h2 className="text-4xl md:text-6xl font-light text-[#f3e7d6] leading-tight">
+                관전 <span className="italic text-[#c44848]">포인트</span> 셋.
+              </h2>
+              <p className="mt-6 text-base md:text-lg text-[#e8d9c8]/70 max-w-2xl leading-relaxed">
+                "Z세대가 앱을 켜듯 자연스럽게 부적을 다운받는 시대. 우리는 오컬트의 형식을 새로 써야 했다." — 박윤서 감독, 장편 입봉작.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-6 md:gap-8">
+              {POINTS.map((p, i) => {
+                const ref = useReveal();
+                return (
+                  <div
+                    key={p.kanji}
+                    ref={ref}
+                    className="reveal"
+                    style={{ transitionDelay: `${i * 120}ms` }}
+                  >
+                    <Card className="p-8 h-full hover:border-[#a40d0d]/70 transition-all duration-500 group">
+                      <div className="flex items-start justify-between mb-6">
+                        <span className="text-[10px] tracking-[0.4em] text-[#a40d0d]/80 uppercase">
+                          POINT 0{i + 1}
+                        </span>
+                        <span className="font-serif font-black text-5xl text-[#a40d0d]/40 group-hover:text-[#a40d0d]/80 transition leading-none">
+                          {p.kanji}
+                        </span>
+                      </div>
+                      <h3 className="text-xl md:text-2xl font-bold text-[#f3e7d6] mb-4 leading-snug">
+                        {p.title}
+                      </h3>
+                      <p className="text-sm md:text-base text-[#e8d9c8]/65 leading-relaxed font-light">
+                        {p.body}
+                      </p>
+                    </Card>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    // ========================================
+    // 🦶 FOOTER / RELEASE INFO
+    // ========================================
+
+    function ReleaseFooter() {
+      const ref = useReveal();
+      return (
+        <footer ref={ref} className="reveal relative pt-20 pb-10 px-6 md:px-12 border-t border-[#3a0606]/60 bg-gradient-to-b from-[#0a0606] to-[#050303]">
+          <div className="max-w-6xl mx-auto">
+            <div className="grid md:grid-cols-3 gap-10 mb-16">
+              <div>
+                <div className="text-[10px] tracking-[0.5em] text-[#a40d0d]/80 uppercase mb-3">공개</div>
+                <div className="text-2xl md:text-3xl font-light text-[#f3e7d6] leading-snug">
+                  2026. 04. 24<br />
+                  <span className="text-base text-[#e8d9c8]/60 tracking-widest">FRIDAY · 글로벌 동시</span>
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] tracking-[0.5em] text-[#a40d0d]/80 uppercase mb-3">감독</div>
+                <div className="text-2xl md:text-3xl font-light text-[#f3e7d6] leading-snug">박윤서<br />
+                  <span className="text-base text-[#e8d9c8]/60">장편 입봉작</span>
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] tracking-[0.5em] text-[#a40d0d]/80 uppercase mb-3">장르 · 형식</div>
+                <div className="text-2xl md:text-3xl font-light text-[#f3e7d6] leading-snug">오컬트 호러<br />
+                  <span className="text-base text-[#e8d9c8]/60">한국 / 8부작 / 18+</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 거대 워터마크 */}
+            <div className="relative overflow-hidden mb-10">
+              <div className="title-gore opacity-25 font-black text-[18vw] leading-[0.8] tracking-tighter text-center select-none">
+                GIRIGO
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 pt-8 border-t border-[#3a0606]/60">
+              <div className="flex items-center gap-3">
+                <span className="text-[#e50914] text-xl font-black tracking-tighter flicker">N</span>
+                <span className="text-[10px] tracking-[0.4em] text-[#e8d9c8]/50 uppercase">Netflix Original</span>
+              </div>
+              <p className="text-[10px] tracking-[0.3em] text-[#e8d9c8]/40 uppercase text-center">
+                © 2026 Netflix, Inc. · ONLY ON NETFLIX
+              </p>
+              <p className="text-[10px] tracking-[0.3em] text-[#e8d9c8]/40 uppercase">
+                #기리고 #GIRIGO
+              </p>
+            </div>
+          </div>
+        </footer>
+      );
+    }
+
+    // ========================================
+    // 🪬 WISH MODAL — 가짜 앱 카운트다운 연출
+    // ========================================
+
+    function WishModal({ isOpen, onClose }) {
+      const [stage, setStage] = useState('input'); // input | wishing | doomed
+      const [name, setName] = useState('');
+      const [wish, setWish] = useState('');
+      const [seconds, setSeconds] = useState(0);
+      const intervalRef = useRef(null);
+
+      useEffect(() => {
+        if (!isOpen) {
+          setStage('input');
+          setName('');
+          setWish('');
+          setSeconds(0);
+          if (intervalRef.current) clearInterval(intervalRef.current);
+        }
+      }, [isOpen]);
+
+      const submit = (e) => {
+        e.preventDefault();
+        if (!name.trim() || !wish.trim()) return;
+        setStage('wishing');
+        setTimeout(() => {
+          setStage('doomed');
+          setSeconds(23 * 3600 + 59 * 60 + 59);
+          intervalRef.current = setInterval(() => {
+            setSeconds((s) => (s <= 0 ? 0 : s - 1));
+          }, 1000);
+        }, 1800);
+      };
+
+      const close = () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        onClose();
+      };
+
+      const hh = String(Math.floor(seconds / 3600)).padStart(2, '0');
+      const mm = String(Math.floor((seconds % 3600) / 60)).padStart(2, '0');
+      const ss = String(seconds % 60).padStart(2, '0');
+
+      return (
+        <Modal isOpen={isOpen} onClose={close} title="앱 · 기리고 GIRIGO">
+          {stage === 'input' && (
+            <div className="space-y-5 mt-2">
+              <div>
+                <p className="text-center text-xl font-light text-[#f3e7d6] mb-2">
+                  당신의 소원을 적으세요.
+                </p>
+                <p className="text-center text-xs tracking-widest text-[#e8d9c8]/50">이름 · 생년월일 · 한 문장의 소원</p>
+              </div>
+              <form onSubmit={submit} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] tracking-[0.3em] text-[#a40d0d] uppercase mb-2">이름</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="홍길동"
+                    className="w-full bg-black/60 border border-[#3a0606] focus:border-[#a40d0d] outline-none px-4 py-3 text-[#f3e7d6] placeholder-[#e8d9c8]/30 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] tracking-[0.3em] text-[#a40d0d] uppercase mb-2">소원</label>
+                  <textarea
+                    value={wish}
+                    onChange={(e) => setWish(e.target.value)}
+                    rows={3}
+                    placeholder="이루어졌으면 하는 일을 적어주세요..."
+                    className="w-full bg-black/60 border border-[#3a0606] focus:border-[#a40d0d] outline-none px-4 py-3 text-[#f3e7d6] placeholder-[#e8d9c8]/30 transition resize-none"
+                  />
+                </div>
+                <p className="text-[10px] text-[#e8d9c8]/40 leading-relaxed">
+                  ※ 본 콘텐츠는 시리즈 '기리고' 홍보용 인터랙션입니다. 실제 어떤 정보도 수집되지 않습니다.
+                </p>
+                <Button type="submit" variant="primary" size="md" className="w-full">
+                  소원 빌기 ▸
+                </Button>
+              </form>
+            </div>
+          )}
+
+          {stage === 'wishing' && (
+            <div className="py-10 flex flex-col items-center gap-5">
+              <div className="relative w-20 h-20">
+                <div className="absolute inset-0 rounded-full border-2 border-[#a40d0d]/30" />
+                <div className="absolute inset-0 rounded-full border-2 border-[#a40d0d] border-t-transparent animate-spin" />
+                <CornerHanja char="願" className="absolute inset-0 flex items-center justify-center text-3xl text-[#a40d0d]" />
+              </div>
+              <p className="text-center text-[#f3e7d6] text-lg font-light">소원을 전달하는 중...</p>
+              <p className="text-center text-xs tracking-[0.3em] text-[#e8d9c8]/50">{name}님의 소원이 접수되었습니다</p>
+            </div>
+          )}
+
+          {stage === 'doomed' && (
+            <div className="py-6 flex flex-col items-center gap-5">
+              <p className="text-center text-[10px] tracking-[0.4em] text-[#a40d0d] uppercase">소원이 접수되었습니다</p>
+              <p className="text-center text-2xl font-light text-[#f3e7d6]">
+                <span className="text-[#c44848]">{name}</span>님,
+                <br />
+                남은 시간입니다.
+              </p>
+              <div className="flex items-center gap-2">
+                {[hh, mm, ss].map((u, i) => (
+                  <React.Fragment key={i}>
+                    <div className="px-3 py-2 border border-[#a40d0d]/60 bg-black/70 min-w-[60px]">
+                      <div className="digit text-3xl font-bold text-[#e8d9c8] text-center">{u}</div>
+                      <div className="text-[8px] tracking-[0.3em] text-[#a40d0d]/80 mt-1 text-center">
+                        {['HRS', 'MIN', 'SEC'][i]}
+                      </div>
+                    </div>
+                    {i < 2 && <span className="text-2xl text-[#a40d0d] flicker">:</span>}
+                  </React.Fragment>
+                ))}
+              </div>
+              <p className="text-center text-xs leading-relaxed text-[#e8d9c8]/60 mt-2 italic">
+                "0이 되는 순간 — 시리즈 '기리고'에서 진짜 이야기가 시작됩니다."
+              </p>
+              <Button variant="secondary" size="sm" onClick={close} className="mt-2">
+                네, 알겠어요
+              </Button>
+            </div>
+          )}
+        </Modal>
+      );
+    }
+
+    // ========================================
+    // 🚀 APP
+    // ========================================
+
+    function App() {
+      const [wishOpen, setWishOpen] = useState(false);
+      return (
+        <div className="relative">
+          <HeroSection onWishClick={() => setWishOpen(true)} />
+          <SynopsisSection />
+          <CastSection />
+          <PointsSection />
+          <ReleaseFooter />
+          <WishModal isOpen={wishOpen} onClose={() => setWishOpen(false)} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

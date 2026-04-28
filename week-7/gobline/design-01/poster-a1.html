@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>기리고 GIRIGO — A1 Key Art Poster</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700;900&family=Noto+Sans+KR:wght@300;400;500;700;900&family=Black+Han+Sans&family=Share+Tech+Mono&family=Cinzel:wght@500;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* ============================================
+       Global / Stage
+       ============================================ */
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #efe6dc;
+      overflow: hidden;
+    }
+
+    .stage {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(ellipse at center, #0a0606 0%, #000 75%);
+      padding: 12px;
+      box-sizing: border-box;
+    }
+
+    /* ============================================
+       Poster Canvas — A1 ratio (594 : 841)
+       ============================================ */
+    .poster {
+      position: relative;
+      aspect-ratio: 594 / 841;
+      height: min(96vh, calc(96vw * 1.4158));
+      max-width: 96vw;
+      background: #0a0606;
+      box-shadow:
+        0 60px 120px rgba(0,0,0,0.9),
+        0 0 0 1px rgba(164, 13, 13, 0.15),
+        inset 0 0 220px rgba(0,0,0,0.85);
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    /* Grain */
+    .grain::after {
+      content: "";
+      position: absolute;
+      inset: -50%;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      opacity: 0.55;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      z-index: 30;
+    }
+
+    /* Vignette */
+    .vignette::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 45%, transparent 35%, rgba(0,0,0,0.55) 75%, rgba(0,0,0,0.95) 100%);
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    /* Blood splatter / drips background */
+    .blood-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 18% 22%, rgba(164,13,13,0.22) 0%, transparent 18%),
+        radial-gradient(circle at 82% 18%, rgba(164,13,13,0.18) 0%, transparent 22%),
+        radial-gradient(circle at 50% 60%, rgba(164,13,13,0.32) 0%, transparent 35%),
+        radial-gradient(circle at 12% 78%, rgba(139,111,74,0.10) 0%, transparent 25%),
+        radial-gradient(circle at 88% 82%, rgba(164,13,13,0.18) 0%, transparent 28%);
+      z-index: 1;
+    }
+
+    /* Korean hanja faint background */
+    .hanja-bg {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      pointer-events: none;
+      font-family: 'Noto Serif KR', serif;
+      color: rgba(164, 13, 13, 0.06);
+      font-weight: 900;
+    }
+
+    .title-han {
+      font-family: 'Black Han Sans', 'Noto Serif KR', serif;
+      letter-spacing: -0.02em;
+      background: linear-gradient(180deg, #efe6dc 0%, #c9b8a8 35%, #6b1414 70%, #a40d0d 100%);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 4px 12px rgba(164,13,13,0.6))
+              drop-shadow(0 0 40px rgba(164,13,13,0.25));
+    }
+
+    .title-en {
+      font-family: 'Cinzel', serif;
+      letter-spacing: 0.55em;
+      font-weight: 700;
+    }
+
+    .countdown {
+      font-family: 'Share Tech Mono', monospace;
+      color: #ff1a1a;
+      text-shadow:
+        0 0 8px rgba(255,26,26,0.85),
+        0 0 24px rgba(255,26,26,0.5),
+        0 0 60px rgba(164,13,13,0.4);
+      letter-spacing: 0.05em;
+    }
+
+    .copy-serif {
+      font-family: 'Noto Serif KR', serif;
+      font-weight: 600;
+    }
+
+    .billing {
+      font-family: 'Cinzel', 'Noto Sans KR', sans-serif;
+      letter-spacing: 0.32em;
+      font-weight: 500;
+    }
+
+    /* Subtle pulse for the timer glow */
+    @keyframes tickPulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.92; transform: scale(0.997); }
+    }
+    .tick { animation: tickPulse 1s ease-in-out infinite; }
+
+    /* Drip lines */
+    .drip {
+      position: absolute;
+      width: 2px;
+      background: linear-gradient(180deg, rgba(164,13,13,0.85), rgba(164,13,13,0));
+      top: 0;
+      filter: blur(0.4px);
+    }
+
+    /* Frame border (printed black bleed line) */
+    .inner-frame {
+      position: absolute;
+      inset: 14px;
+      border: 1px solid rgba(164, 13, 13, 0.18);
+      pointer-events: none;
+      z-index: 25;
+    }
+
+    /* Print badge */
+    .print-badge {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 9999;
+      background: rgba(0,0,0,0.7);
+      color: #c9b8a8;
+      border: 1px solid rgba(164,13,13,0.4);
+      padding: 8px 12px;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      font-family: 'Share Tech Mono', monospace;
+      backdrop-filter: blur(6px);
+    }
+
+    /* ============================================
+       Print — A1 Portrait
+       ============================================ */
+    @page {
+      size: A1 portrait;
+      margin: 0;
+    }
+    @media print {
+      html, body {
+        background: #0a0606 !important;
+        overflow: visible;
+      }
+      .stage {
+        padding: 0 !important;
+        width: 594mm;
+        height: 841mm;
+      }
+      .poster {
+        width: 594mm !important;
+        height: 841mm !important;
+        max-width: none !important;
+        max-height: none !important;
+        box-shadow: none !important;
+        page-break-after: avoid;
+      }
+      .print-badge { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // ========================================
+    // Asset Components — SVG (Bujeok / Talisman)
+    // ========================================
+    function TalismanSVG({ className = "", opacity = 0.55 }) {
+      return (
+        <svg
+          viewBox="0 0 200 360"
+          className={className}
+          style={{ opacity }}
+          xmlns="http://www.w3.org/2000/svg"
+          preserveAspectRatio="xMidYMid meet"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#c9a35a" />
+              <stop offset="60%" stopColor="#a37635" />
+              <stop offset="100%" stopColor="#6b4a1f" />
+            </linearGradient>
+            <filter id="rough">
+              <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" />
+              <feDisplacementMap in="SourceGraphic" scale="1.5" />
+            </filter>
+          </defs>
+          {/* paper */}
+          <rect x="6" y="6" width="188" height="348" rx="2" fill="url(#paper)" filter="url(#rough)" />
+          {/* tear edges */}
+          <path d="M6 6 L20 14 L8 22 L24 32 L6 40 Z" fill="#0a0606" opacity="0.6" />
+          <path d="M194 354 L180 346 L192 338 L176 328 L194 320 Z" fill="#0a0606" opacity="0.6" />
+
+          {/* central red glyph */}
+          <g stroke="#7a0a0a" strokeWidth="3" fill="none" strokeLinecap="round">
+            <path d="M100 30 L100 90" />
+            <path d="M70 60 L130 60" />
+            <circle cx="100" cy="60" r="14" />
+            <path d="M100 100 L100 220" />
+            <path d="M60 130 L140 130 M60 160 L140 160 M60 190 L140 190" />
+            <path d="M55 240 Q100 260 145 240" />
+            <path d="M70 270 L100 320 L130 270" />
+            <path d="M85 290 L115 290" />
+            <circle cx="100" cy="335" r="6" fill="#7a0a0a" />
+          </g>
+
+          {/* outer corners */}
+          <g fill="#7a0a0a">
+            <rect x="20" y="20" width="6" height="6" />
+            <rect x="174" y="20" width="6" height="6" />
+            <rect x="20" y="334" width="6" height="6" />
+            <rect x="174" y="334" width="6" height="6" />
+          </g>
+        </svg>
+      );
+    }
+
+    function BloodHandprint({ className = "", opacity = 0.55 }) {
+      return (
+        <svg
+          viewBox="0 0 200 240"
+          className={className}
+          style={{ opacity }}
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <defs>
+            <radialGradient id="blood" cx="50%" cy="40%" r="60%">
+              <stop offset="0%" stopColor="#c41414" />
+              <stop offset="60%" stopColor="#7a0a0a" />
+              <stop offset="100%" stopColor="#3a0404" />
+            </radialGradient>
+          </defs>
+          <g fill="url(#blood)">
+            {/* palm */}
+            <ellipse cx="100" cy="140" rx="55" ry="60" />
+            {/* fingers */}
+            <ellipse cx="55" cy="80" rx="14" ry="40" transform="rotate(-25 55 80)" />
+            <ellipse cx="82" cy="55" rx="14" ry="48" transform="rotate(-10 82 55)" />
+            <ellipse cx="115" cy="50" rx="14" ry="50" transform="rotate(5 115 50)" />
+            <ellipse cx="148" cy="65" rx="14" ry="44" transform="rotate(20 148 65)" />
+            <ellipse cx="42" cy="135" rx="16" ry="32" transform="rotate(-50 42 135)" />
+          </g>
+          {/* drips */}
+          <g fill="#7a0a0a" opacity="0.8">
+            <rect x="98" y="200" width="3" height="35" />
+            <rect x="120" y="195" width="2" height="28" />
+            <rect x="78" y="198" width="2" height="22" />
+          </g>
+        </svg>
+      );
+    }
+
+    function CrowSilhouette({ className = "", opacity = 0.4 }) {
+      return (
+        <svg
+          viewBox="0 0 200 100"
+          className={className}
+          style={{ opacity }}
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M10 60 Q40 30 70 50 Q85 35 100 50 Q115 35 130 50 Q160 30 190 60 L180 65 Q150 50 130 60 L100 60 L70 60 Q50 50 20 65 Z"
+            fill="#000"
+          />
+        </svg>
+      );
+    }
+
+    // ========================================
+    // Drips Layer (decorative random vertical lines)
+    // ========================================
+    function DripsLayer() {
+      const drips = useMemo(() => {
+        const arr = [];
+        for (let i = 0; i < 14; i++) {
+          arr.push({
+            left: Math.random() * 100,
+            height: 30 + Math.random() * 180,
+            delay: Math.random(),
+            opacity: 0.3 + Math.random() * 0.5,
+          });
+        }
+        return arr;
+      }, []);
+
+      return (
+        <div className="absolute inset-x-0 top-0 z-[3] pointer-events-none" style={{ height: "60%" }}>
+          {drips.map((d, i) => (
+            <div
+              key={i}
+              className="drip"
+              style={{
+                left: `${d.left}%`,
+                height: `${d.height}px`,
+                opacity: d.opacity,
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Hanja Background (faint floating 願 命 咒)
+    // ========================================
+    function HanjaBackground() {
+      const items = [
+        { ch: "願", top: "8%", left: "6%", size: "12vmin", rot: -8 },
+        { ch: "命", top: "12%", left: "78%", size: "14vmin", rot: 6 },
+        { ch: "咒", top: "62%", left: "4%", size: "16vmin", rot: -12 },
+        { ch: "願", top: "70%", left: "72%", size: "13vmin", rot: 10 },
+        { ch: "命", top: "38%", left: "82%", size: "9vmin", rot: -4 },
+        { ch: "咒", top: "30%", left: "10%", size: "10vmin", rot: 8 },
+      ];
+      return (
+        <div className="hanja-bg">
+          {items.map((it, i) => (
+            <div
+              key={i}
+              className="absolute"
+              style={{
+                top: it.top,
+                left: it.left,
+                fontSize: it.size,
+                transform: `rotate(${it.rot}deg)`,
+              }}
+            >
+              {it.ch}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // ========================================
+    // Live Countdown — 째깍거리는 디지털 타이머
+    // ========================================
+    function useCountdown() {
+      const [time, setTime] = useState({ h: 23, m: 59, s: 59 });
+
+      useEffect(() => {
+        const tick = () => {
+          setTime((t) => {
+            let { h, m, s } = t;
+            s -= 1;
+            if (s < 0) { s = 59; m -= 1; }
+            if (m < 0) { m = 59; h -= 1; }
+            if (h < 0) { h = 23; m = 59; s = 59; }
+            return { h, m, s };
+          });
+        };
+        const id = setInterval(tick, 1000);
+        return () => clearInterval(id);
+      }, []);
+
+      const fmt = (n) => String(n).padStart(2, "0");
+      return `${fmt(time.h)}:${fmt(time.m)}:${fmt(time.s)}`;
+    }
+
+    // ========================================
+    // Poster — Single A1 Key Art
+    // ========================================
+    function Poster() {
+      const cd = useCountdown();
+
+      return (
+        <div className="poster grain vignette">
+          {/* Layer 1: Blood radial wash */}
+          <div className="blood-bg" />
+
+          {/* Layer 2: Hanja faint */}
+          <HanjaBackground />
+
+          {/* Layer 3: Drips from top */}
+          <DripsLayer />
+
+          {/* Inner frame */}
+          <div className="inner-frame" />
+
+          {/* ============================================
+              TOP SLATE — 1/6 (NETFLIX SERIES)
+              ============================================ */}
+          <header
+            className="absolute left-0 right-0 top-0 z-10 px-[6%] pt-[4%]"
+            style={{ height: "16%" }}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <span
+                  className="text-[#e50914] font-black tracking-[0.4em]"
+                  style={{ fontSize: "1.6vmin", fontFamily: "Cinzel, sans-serif" }}
+                >
+                  N
+                </span>
+                <span
+                  className="text-[#c9b8a8] tracking-[0.45em]"
+                  style={{ fontSize: "1.3vmin", letterSpacing: "0.45em" }}
+                >
+                  NETFLIX SERIES
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span
+                  className="text-[#c9b8a8] tracking-[0.3em]"
+                  style={{ fontSize: "1.2vmin" }}
+                >
+                  KOREAN OCCULT HORROR
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-[1.4vmin] flex items-center justify-between">
+              <div
+                className="text-[#a40d0d] tracking-[0.35em] copy-serif"
+                style={{ fontSize: "1.4vmin" }}
+              >
+                — 빌면 들어준다. 단, 대가가 있다 —
+              </div>
+              <div
+                className="text-[#c9b8a8] tracking-[0.25em]"
+                style={{ fontSize: "1.2vmin", fontFamily: "Share Tech Mono, monospace" }}
+              >
+                EP.01 — EP.08
+              </div>
+            </div>
+
+            <div
+              className="mt-[1vmin] h-px w-full"
+              style={{ background: "linear-gradient(90deg, transparent, rgba(164,13,13,0.6), transparent)" }}
+            />
+          </header>
+
+          {/* ============================================
+              CENTER KEY VISUAL — 2/3
+              ============================================ */}
+          <main
+            className="absolute left-0 right-0 z-10 flex flex-col items-center justify-center"
+            style={{ top: "16%", height: "66%" }}
+          >
+            {/* Talisman left */}
+            <div
+              className="absolute"
+              style={{
+                left: "8%",
+                top: "10%",
+                width: "16%",
+                transform: "rotate(-8deg)",
+              }}
+            >
+              <TalismanSVG opacity={0.85} />
+            </div>
+
+            {/* Talisman right */}
+            <div
+              className="absolute"
+              style={{
+                right: "8%",
+                top: "12%",
+                width: "14%",
+                transform: "rotate(11deg)",
+              }}
+            >
+              <TalismanSVG opacity={0.7} />
+            </div>
+
+            {/* Bloody handprint behind title */}
+            <div
+              className="absolute"
+              style={{
+                left: "18%",
+                bottom: "6%",
+                width: "18%",
+                transform: "rotate(-15deg)",
+              }}
+            >
+              <BloodHandprint opacity={0.4} />
+            </div>
+            <div
+              className="absolute"
+              style={{
+                right: "14%",
+                bottom: "10%",
+                width: "16%",
+                transform: "rotate(22deg) scaleX(-1)",
+              }}
+            >
+              <BloodHandprint opacity={0.32} />
+            </div>
+
+            {/* Crow flock */}
+            <div className="absolute left-[30%] top-[2%] w-[40%] opacity-60">
+              <CrowSilhouette opacity={0.5} />
+            </div>
+
+            {/* COUNTDOWN — huge digital timer behind / overlapping title */}
+            <div
+              className="absolute z-[11] tick countdown select-none"
+              style={{
+                top: "8%",
+                fontSize: "10.5vmin",
+                fontWeight: 400,
+                opacity: 0.95,
+              }}
+            >
+              {cd}
+            </div>
+
+            {/* Hairline divider above title */}
+            <div
+              className="absolute z-[12]"
+              style={{
+                top: "26%",
+                width: "44%",
+                height: "1px",
+                background: "linear-gradient(90deg, transparent, #a40d0d, transparent)",
+              }}
+            />
+
+            {/* MAIN TITLE — 기리고 */}
+            <h1
+              className="title-han z-[12] relative leading-[0.85] text-center"
+              style={{
+                fontSize: "26vmin",
+                marginTop: "12%",
+              }}
+            >
+              기리고
+            </h1>
+
+            {/* Bloody slash through title */}
+            <div
+              className="absolute z-[13] pointer-events-none"
+              style={{
+                top: "55%",
+                left: "10%",
+                right: "10%",
+                height: "0.6vmin",
+                background: "linear-gradient(90deg, transparent 0%, rgba(164,13,13,0) 10%, #a40d0d 35%, #c41414 50%, #a40d0d 65%, rgba(164,13,13,0) 90%, transparent 100%)",
+                filter: "blur(0.4px) drop-shadow(0 0 6px rgba(196,20,20,0.7))",
+                transform: "rotate(-2deg)",
+              }}
+            />
+
+            {/* English title */}
+            <div
+              className="title-en z-[12] relative text-[#c9b8a8] mt-[3%]"
+              style={{ fontSize: "3.4vmin" }}
+            >
+              G I R I G O
+            </div>
+
+            {/* Hanja petite under English */}
+            <div
+              className="z-[12] relative mt-[1.2vmin] flex items-center gap-[3vmin] copy-serif text-[#a40d0d]"
+              style={{ fontSize: "2.4vmin" }}
+            >
+              <span>願</span>
+              <span className="text-[#6b4a1f] opacity-70" style={{ fontSize: "1.4vmin" }}>—</span>
+              <span>命</span>
+              <span className="text-[#6b4a1f] opacity-70" style={{ fontSize: "1.4vmin" }}>—</span>
+              <span>咒</span>
+            </div>
+          </main>
+
+          {/* ============================================
+              BOTTOM BLOCK — 1/6
+              ============================================ */}
+          <footer
+            className="absolute left-0 right-0 bottom-0 z-10 px-[6%] pb-[3%]"
+            style={{ height: "18%" }}
+          >
+            {/* Tagline */}
+            <div className="text-center copy-serif">
+              <p
+                className="text-[#efe6dc] leading-tight"
+                style={{ fontSize: "3vmin", letterSpacing: "0.05em" }}
+              >
+                소원을 빌어라.<span className="text-[#a40d0d]"> 시간이 다 되기 전에.</span>
+              </p>
+              <p
+                className="text-[#8b6f4a] mt-[0.6vmin] tracking-[0.3em]"
+                style={{ fontSize: "1.3vmin" }}
+              >
+                0이 되는 순간, 너의 차례다
+              </p>
+            </div>
+
+            {/* Hairline */}
+            <div
+              className="my-[1.4vmin] h-px"
+              style={{ background: "linear-gradient(90deg, transparent, rgba(164,13,13,0.55), transparent)" }}
+            />
+
+            {/* Billing block — credits */}
+            <div className="text-center billing text-[#c9b8a8]">
+              <div style={{ fontSize: "1.05vmin", letterSpacing: "0.42em" }} className="text-[#8b6f4a]">
+                A NETFLIX ORIGINAL SERIES
+              </div>
+
+              <div className="mt-[0.8vmin]" style={{ fontSize: "1.2vmin", letterSpacing: "0.34em" }}>
+                <span className="text-[#8b6f4a]">DIRECTED BY</span>
+                <span className="ml-[1vmin] text-[#efe6dc] font-bold">BAK YUNSEO</span>
+              </div>
+
+              <div className="mt-[0.5vmin]" style={{ fontSize: "1.4vmin", letterSpacing: "0.28em" }}>
+                <span className="text-[#efe6dc] font-bold">KANG MINA</span>
+                <span className="mx-[0.8vmin] text-[#a40d0d]">·</span>
+                <span className="text-[#efe6dc] font-bold">BAEK SEONHO</span>
+                <span className="mx-[0.8vmin] text-[#a40d0d]">·</span>
+                <span className="text-[#efe6dc] font-bold">HYUN WOOSEOK</span>
+                <span className="mx-[0.8vmin] text-[#a40d0d]">·</span>
+                <span className="text-[#efe6dc] font-bold">LEE HYOJE</span>
+              </div>
+
+              <div className="mt-[0.4vmin] text-[#8b6f4a]" style={{ fontSize: "1vmin", letterSpacing: "0.4em" }}>
+                SPECIAL APPEARANCE
+                <span className="ml-[0.8vmin] text-[#c9b8a8]">JEON SONI</span>
+              </div>
+            </div>
+
+            {/* Hairline */}
+            <div
+              className="my-[1.2vmin] h-px"
+              style={{ background: "linear-gradient(90deg, transparent, rgba(164,13,13,0.35), transparent)" }}
+            />
+
+            {/* Bottom row — rating, date, netflix wordmark */}
+            <div className="flex items-center justify-between">
+              {/* Rating */}
+              <div className="flex items-center gap-[1vmin]">
+                <div
+                  className="flex items-center justify-center border border-[#c9b8a8] text-[#c9b8a8]"
+                  style={{
+                    width: "3.6vmin",
+                    height: "3.6vmin",
+                    fontSize: "1.4vmin",
+                    fontWeight: 800,
+                  }}
+                >
+                  15
+                </div>
+                <div className="text-[#8b6f4a] leading-tight" style={{ fontSize: "0.95vmin", letterSpacing: "0.2em" }}>
+                  15세 이상 관람가<br />
+                  공포·잔혹성·약물·모방위험
+                </div>
+              </div>
+
+              {/* Date — center */}
+              <div className="text-center">
+                <div
+                  className="text-[#a40d0d] copy-serif font-bold"
+                  style={{ fontSize: "2vmin", letterSpacing: "0.18em" }}
+                >
+                  2026.04.24
+                </div>
+                <div
+                  className="text-[#c9b8a8] tracking-[0.32em] mt-[0.2vmin]"
+                  style={{ fontSize: "0.9vmin" }}
+                >
+                  GLOBAL STREAMING — NETFLIX
+                </div>
+              </div>
+
+              {/* Netflix wordmark */}
+              <div className="flex flex-col items-end">
+                <div
+                  className="text-[#e50914] font-black"
+                  style={{
+                    fontSize: "2.4vmin",
+                    letterSpacing: "0.18em",
+                    fontFamily: "'Cinzel', sans-serif",
+                    textShadow: "0 0 18px rgba(229,9,20,0.4)",
+                  }}
+                >
+                  NETFLIX
+                </div>
+                <div
+                  className="text-[#8b6f4a] mt-[0.2vmin]"
+                  style={{ fontSize: "0.85vmin", letterSpacing: "0.32em" }}
+                >
+                  PRODUCED BY GOBLINE STUDIO
+                </div>
+              </div>
+            </div>
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // App
+    // ========================================
+    function App() {
+      return (
+        <div className="stage">
+          <Poster />
+          <div className="print-badge">
+            PRINT: A1 (594 × 841 mm) · CMD/CTRL+P → SAVE AS PDF
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Render
+    // ========================================
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
