@@ -2,7 +2,10 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// BIGSERIAL(int8/oid 20)을 JS number로 파싱 — 채팅 id 규모에서 안전
+types.setTypeParser(20, (val) => (val === null ? null : parseInt(val, 10)));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
