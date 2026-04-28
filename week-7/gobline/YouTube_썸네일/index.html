@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>joe튜브 썸네일 스튜디오 · A/B</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      background: #f1f5f9;
+    }
+    .font-bhs { font-family: 'Black Han Sans', 'Noto Sans KR', sans-serif; }
+    .font-noto { font-family: 'Noto Sans KR', sans-serif; }
+
+    /* The actual 1920x1080 canvas — kept at real pixel size, scaled visually with transform */
+    .thumb-canvas {
+      width: 1920px;
+      height: 1080px;
+      position: relative;
+      overflow: hidden;
+      transform-origin: top left;
+      flex-shrink: 0;
+    }
+
+    /* Wrapper used to clip and reserve scaled-down space */
+    .thumb-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border-radius: 14px;
+      background: #000;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+    }
+
+    .headline-stroke {
+      color: #fff;
+      text-shadow:
+        -6px -6px 0 #000, 6px -6px 0 #000, -6px 6px 0 #000, 6px 6px 0 #000,
+        -6px 0 0 #000, 6px 0 0 #000, 0 -6px 0 #000, 0 6px 0 #000,
+        0 14px 28px rgba(0,0,0,0.55);
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+    }
+
+    .diagonal-banner {
+      position: absolute;
+      transform: rotate(-8deg);
+      transform-origin: center;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+    }
+
+    .vignette::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.62) 100%);
+      pointer-events: none;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar { width: 8px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      background: #ef4444;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #fff;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+    }
+
+    /* ==========================================
+       반짝 / SPARKLE ANIMATIONS
+       ========================================== */
+    @keyframes sparkle-twinkle {
+      0%, 100% { opacity: 0.35; transform: var(--rot, rotate(0deg)) scale(0.6); }
+      50%      { opacity: 1;    transform: var(--rot, rotate(0deg)) scale(1.15); }
+    }
+    .sparkle {
+      position: absolute;
+      pointer-events: none;
+      animation: sparkle-twinkle 2.4s ease-in-out infinite;
+      filter: drop-shadow(0 0 8px rgba(255,255,255,0.9));
+      z-index: 4;
+    }
+
+    @keyframes shine-sweep {
+      0%   { transform: translateX(-150%) skewX(-20deg); }
+      60%  { transform: translateX(250%)  skewX(-20deg); }
+      100% { transform: translateX(250%)  skewX(-20deg); }
+    }
+    .shine-target {
+      position: relative;
+      overflow: hidden;
+    }
+    .shine-target::before {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      left: 0;
+      width: 40%;
+      background: linear-gradient(
+        90deg,
+        rgba(255,255,255,0) 0%,
+        rgba(255,255,255,0.65) 50%,
+        rgba(255,255,255,0) 100%
+      );
+      mix-blend-mode: overlay;
+      animation: shine-sweep 3.2s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    @keyframes keyword-wiggle {
+      0%, 100% { transform: rotate(-1deg) scale(1); }
+      50%      { transform: rotate( 1deg) scale(1.03); }
+    }
+    .keyword-wiggle {
+      display: inline-block;
+      animation: keyword-wiggle 2.8s ease-in-out infinite;
+      transform-origin: center;
+    }
+
+    .keyword-highlighter {
+      position: absolute;
+      left: -8%;
+      right: -8%;
+      bottom: 6%;
+      height: 36%;
+      transform: rotate(-2deg);
+      z-index: -1;
+      border-radius: 8px;
+      filter: blur(0.5px);
+    }
+
+    @keyframes badge-pulse {
+      0%, 100% { transform: rotate(6deg) scale(1); }
+      50%      { transform: rotate(6deg) scale(1.06); }
+    }
+    .badge-pulse {
+      animation: badge-pulse 1.6s ease-in-out infinite;
+    }
+
+    @keyframes avatar-glow {
+      0%, 100% { box-shadow: 0 0 0 6px var(--glow-color, #FFD93D), 0 0 30px 6px var(--glow-color, #FFD93D); }
+      50%      { box-shadow: 0 0 0 8px var(--glow-color, #FFD93D), 0 0 50px 12px var(--glow-color, #FFD93D); }
+    }
+
+    @keyframes light-leak-drift {
+      0%, 100% { opacity: 0.85; transform: translate(0, 0) scale(1); }
+      50%      { opacity: 1;    transform: translate(-30px, 20px) scale(1.08); }
+    }
+    .light-leak {
+      animation: light-leak-drift 6s ease-in-out infinite;
+    }
+
+    .accent-strip-gloss {
+      position: absolute;
+      left: 4%;
+      right: 4%;
+      top: 14%;
+      height: 6px;
+      background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.85) 50%, rgba(255,255,255,0) 100%);
+      border-radius: 999px;
+      pointer-events: none;
+    }
+
+    .corner-ribbon {
+      position: absolute;
+      top: 32px;
+      left: -64px;
+      width: 320px;
+      transform: rotate(-45deg);
+      transform-origin: center;
+      text-align: center;
+      padding: 14px 0;
+      font-family: 'Black Han Sans', sans-serif;
+      font-size: 44px;
+      letter-spacing: 0.04em;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+      z-index: 6;
+      border-top: 3px solid rgba(255,255,255,0.6);
+      border-bottom: 3px solid rgba(0,0,0,0.25);
+    }
+
+    /* ==========================================
+       A/B variant badge (outside the 1920x1080 design)
+       ========================================== */
+    .variant-badge {
+      position: absolute;
+      top: -18px;
+      left: -18px;
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      font-family: 'Black Han Sans', sans-serif;
+      font-size: 38px;
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(0,0,0,0.45), 0 0 0 4px #fff;
+      z-index: 20;
+      letter-spacing: 0;
+      line-height: 1;
+    }
+    .variant-badge.A { background: linear-gradient(135deg, #2563eb, #06b6d4); }
+    .variant-badge.B { background: linear-gradient(135deg, #db2777, #f97316); }
+
+    /* Active editing pulse around stage */
+    .stage-active-A {
+      box-shadow: 0 0 0 4px #06b6d4, 0 24px 50px rgba(6,182,212,0.35);
+    }
+    .stage-active-B {
+      box-shadow: 0 0 0 4px #ec4899, 0 24px 50px rgba(236,72,153,0.35);
+    }
+
+    /* Winner highlight ring */
+    .winner-ring {
+      box-shadow:
+        0 0 0 6px #22c55e,
+        0 0 0 10px rgba(34,197,94,0.35),
+        0 24px 50px rgba(34,197,94,0.45);
+    }
+
+    .winner-stamp {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: #16a34a;
+      color: #fff;
+      font-family: 'Black Han Sans', sans-serif;
+      font-size: 20px;
+      padding: 8px 16px;
+      border-radius: 999px;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.3);
+      transform: rotate(6deg);
+      z-index: 25;
+      border: 3px solid #fff;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+    // ========================================
+    // Helpers — color manipulation
+    // ========================================
+    function hexToRgb(hex) {
+      const h = hex.replace('#', '');
+      const full = h.length === 3 ? h.split('').map(c => c + c).join('') : h;
+      const num = parseInt(full, 16);
+      return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
+    }
+    function rgba(hex, a) {
+      const { r, g, b } = hexToRgb(hex);
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    function lighten(hex, amount = 0.35) {
+      const { r, g, b } = hexToRgb(hex);
+      const lr = Math.round(r + (255 - r) * amount);
+      const lg = Math.round(g + (255 - g) * amount);
+      const lb = Math.round(b + (255 - b) * amount);
+      return `rgb(${lr},${lg},${lb})`;
+    }
+
+    // ========================================
+    // Static Data — YouTuber Profile & Presets
+    // ========================================
+    const YOUTUBER = {
+      channel: 'joe튜브',
+      handle: '@joetube_travel',
+      subscribers: '28.4만',
+      videos: 412,
+      genre: '여행 / 배낭여행 Vlog',
+      bio: '솔직한 여행 후기, 가성비 동남아·유럽 배낭여행',
+      avatar: 'https://i.pravatar.cc/200?img=12',
+    };
+
+    const BG_PRESETS = [
+      { id: 'bali',   label: '발리 해변',       url: 'https://picsum.photos/seed/balibeach/1920/1080' },
+      { id: 'tokyo',  label: '도쿄 야경',       url: 'https://picsum.photos/seed/tokyonight/1920/1080' },
+      { id: 'viet',   label: '베트남 길거리음식', url: 'https://picsum.photos/seed/vietnamfood/1920/1080' },
+      { id: 'eu',     label: '유럽 골목',       url: 'https://picsum.photos/seed/europealley/1920/1080' },
+      { id: 'jeju',   label: '제주 숨은명소',   url: 'https://picsum.photos/seed/jejuhidden/1920/1080' },
+    ];
+
+    const ACCENT_COLORS = [
+      { id: 'yellow',  label: '노랑',     hex: '#FFD93D', text: '#000' },
+      { id: 'red',     label: '빨강',     hex: '#FF3B30', text: '#FFF' },
+      { id: 'cyan',    label: '시안',     hex: '#22D3EE', text: '#000' },
+      { id: 'green',   label: '형광초록', hex: '#00FF88', text: '#000' },
+      { id: 'pink',    label: '핫핑크',   hex: '#FF2D87', text: '#FFF' },
+    ];
+
+    const BADGE_COLORS = [
+      { id: 'red',    hex: '#FF3B30', text: '#FFF', label: '빨강' },
+      { id: 'black',  hex: '#111111', text: '#FFD93D', label: '블랙' },
+      { id: 'yellow', hex: '#FFD93D', text: '#000', label: '노랑' },
+      { id: 'blue',   hex: '#1E40AF', text: '#FFF', label: '블루' },
+    ];
+
+    // For "차이 자동 생성" — contrasting accent pairs
+    const ACCENT_CONTRAST = {
+      yellow: 'pink',
+      pink:   'yellow',
+      red:    'cyan',
+      cyan:   'red',
+      green:  'pink',
+    };
+
+    // ========================================
+    // 4-point Sparkle SVG
+    // ========================================
+    function SparkleSVG({ color = '#FFD93D', size = 48, style = {} }) {
+      return (
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 100 100"
+          style={style}
+          aria-hidden="true"
+        >
+          <defs>
+            <radialGradient id={`spk-${color.replace('#','')}`} cx="50%" cy="50%" r="50%">
+              <stop offset="0%"  stopColor="#fff" stopOpacity="1" />
+              <stop offset="40%" stopColor={color} stopOpacity="1" />
+              <stop offset="100%" stopColor={color} stopOpacity="0.6" />
+            </radialGradient>
+          </defs>
+          <path
+            d="M50 4 L57 43 L96 50 L57 57 L50 96 L43 57 L4 50 L43 43 Z"
+            fill={`url(#spk-${color.replace('#','')})`}
+            stroke="#000"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+          <circle cx="50" cy="50" r="6" fill="#fff" />
+        </svg>
+      );
+    }
+
+    const SPARKLE_POSITIONS = [
+      { top: '8%',  left: '8%',  size: 70, delay: 0,    rot: -12 },
+      { top: '14%', left: '42%', size: 44, delay: 0.6,  rot: 18 },
+      { top: '6%',  left: '64%', size: 56, delay: 1.1,  rot: -8 },
+      { top: '24%', left: '85%', size: 38, delay: 0.3,  rot: 22 },
+      { top: '46%', left: '4%',  size: 52, delay: 1.5,  rot: -20 },
+      { top: '58%', left: '88%', size: 64, delay: 0.9,  rot: 14 },
+      { top: '72%', left: '36%', size: 40, delay: 0.4,  rot: -6 },
+      { top: '78%', left: '70%', size: 48, delay: 1.7,  rot: 10 },
+      { top: '34%', left: '78%', size: 30, delay: 1.3,  rot: 30 },
+      { top: '88%', left: '12%', size: 36, delay: 0.7,  rot: -28 },
+      { top: '50%', left: '50%', size: 32, delay: 2.0,  rot: 8 },
+      { top: '20%', left: '22%', size: 34, delay: 1.9,  rot: -18 },
+    ];
+
+    // ========================================
+    // Default variant configs
+    // ========================================
+    const DEFAULT_A = {
+      bgId: 'bali',
+      headline: '월급 200으로\n*한달살기*',
+      fontSize: 160,
+      position: 'center',
+      align: 'left',
+      accentColorId: 'yellow',
+      badgeText: '리얼후기',
+      badgeColorId: 'red',
+      showAccentStrip: true,
+      showBranding: true,
+      showBadge: true,
+      sparkleCount: 8,
+      headlineGlow: true,
+      glowIntensity: 'medium',
+      shineSweep: true,
+      keywordHighlighter: true,
+      badgePulse: true,
+      lightLeak: true,
+      cornerRibbon: true,
+      cornerRibbonText: 'Ep.12',
+    };
+
+    const DEFAULT_B = {
+      bgId: 'tokyo',
+      headline: '이 가격 실화?\n*방콕 호캉스*',
+      fontSize: 150,
+      position: 'bottom',
+      align: 'left',
+      accentColorId: 'pink',
+      badgeText: '단독공개',
+      badgeColorId: 'black',
+      showAccentStrip: true,
+      showBranding: true,
+      showBadge: true,
+      sparkleCount: 5,
+      headlineGlow: true,
+      glowIntensity: 'high',
+      shineSweep: true,
+      keywordHighlighter: true,
+      badgePulse: true,
+      lightLeak: true,
+      cornerRibbon: true,
+      cornerRibbonText: 'Ep.07',
+    };
+
+    // ========================================
+    // Design System Components
+    // ========================================
+    function Button({ children, variant = 'primary', size = 'md', className = '', ...props }) {
+      const variants = {
+        primary: 'bg-rose-500 hover:bg-rose-600 text-white shadow-sm',
+        secondary: 'bg-white hover:bg-slate-50 text-slate-800 border border-slate-300',
+        danger: 'bg-red-600 hover:bg-red-700 text-white',
+        ghost: 'bg-transparent hover:bg-slate-100 text-slate-700',
+        dark: 'bg-slate-900 hover:bg-black text-white',
+        green: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+      };
+      const sizes = {
+        sm: 'px-3 py-1.5 text-sm',
+        md: 'px-4 py-2 text-sm',
+        lg: 'px-5 py-3 text-base',
+      };
+      return (
+        <button
+          className={`rounded-lg font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+          {...props}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ children, className = '', title, subtitle }) {
+      return (
+        <div className={`bg-white rounded-xl border border-slate-200 shadow-sm ${className}`}>
+          {(title || subtitle) && (
+            <div className="px-4 pt-4 pb-2">
+              {title && <div className="font-bold text-slate-800 text-sm tracking-tight">{title}</div>}
+              {subtitle && <div className="text-xs text-slate-500 mt-0.5">{subtitle}</div>}
+            </div>
+          )}
+          <div className="p-4 pt-3">{children}</div>
+        </div>
+      );
+    }
+
+    function Label({ children, hint }) {
+      return (
+        <div className="flex items-baseline justify-between mb-1.5">
+          <label className="text-xs font-semibold text-slate-700">{children}</label>
+          {hint && <span className="text-[10px] text-slate-400">{hint}</span>}
+        </div>
+      );
+    }
+
+    function Toggle({ checked, onChange, label }) {
+      return (
+        <label className="flex items-center justify-between cursor-pointer select-none py-1">
+          <span className="text-xs font-medium text-slate-700">{label}</span>
+          <span
+            onClick={() => onChange(!checked)}
+            className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition ${checked ? 'bg-rose-500' : 'bg-slate-300'}`}
+          >
+            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${checked ? 'left-[18px]' : 'left-0.5'}`} />
+          </span>
+        </label>
+      );
+    }
+
+    function Modal({ isOpen, onClose, title, children }) {
+      if (!isOpen) return null;
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between mb-3">
+              <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+              <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+            </div>
+            <div className="text-sm text-slate-700 leading-relaxed">{children}</div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Layout — Header
+    // ========================================
+    function Header() {
+      return (
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+          <div className="max-w-[1800px] mx-auto px-4 lg:px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-rose-500 to-red-600 grid place-items-center text-white font-black text-lg shadow-md">
+                J
+              </div>
+              <div>
+                <div className="font-bhs text-xl text-slate-900 leading-none">joe튜브 썸네일 스튜디오 · A/B</div>
+                <div className="text-[11px] text-slate-500 mt-0.5">두 버전을 나란히 비교 · 1920×1080 · 반짝 모드</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-full pl-1 pr-3 py-1">
+              <img src={YOUTUBER.avatar} alt="" className="w-7 h-7 rounded-full object-cover" />
+              <div className="leading-tight hidden sm:block">
+                <div className="text-xs font-bold text-slate-800">{YOUTUBER.channel}</div>
+                <div className="text-[10px] text-slate-500">구독자 {YOUTUBER.subscribers}</div>
+              </div>
+            </div>
+          </div>
+        </header>
+      );
+    }
+
+    // ========================================
+    // Thumbnail Canvas (1920x1080 — visually scaled)
+    // ========================================
+    function ThumbnailCanvas({ config, scale, canvasRef }) {
+      const accent = ACCENT_COLORS.find(c => c.id === config.accentColorId) || ACCENT_COLORS[0];
+      const badge = BADGE_COLORS.find(c => c.id === config.badgeColorId) || BADGE_COLORS[0];
+      const bg = BG_PRESETS.find(b => b.id === config.bgId) || BG_PRESETS[0];
+
+      const positionStyle = useMemo(() => {
+        if (config.position === 'top') return { top: 80, bottom: 'auto' };
+        if (config.position === 'bottom') return { top: 'auto', bottom: 80 };
+        return { top: '50%', transform: 'translateY(-50%)' };
+      }, [config.position]);
+
+      const alignStyle = useMemo(() => {
+        if (config.align === 'left') return { textAlign: 'left', left: 90, right: 'auto', width: 1500 };
+        if (config.align === 'right') return { textAlign: 'right', left: 'auto', right: 90, width: 1500 };
+        return { textAlign: 'center', left: 90, right: 90 };
+      }, [config.align]);
+
+      const lines = (config.headline || '').split('\n');
+
+      const glowLevels = {
+        low:    { close: '0 0 12px', far: '0 0 28px' },
+        medium: { close: '0 0 22px', far: '0 0 48px' },
+        high:   { close: '0 0 32px', far: '0 0 70px' },
+      };
+      const glowStops = glowLevels[config.glowIntensity] || glowLevels.medium;
+
+      const baseStroke =
+        '-6px -6px 0 #000, 6px -6px 0 #000, -6px 6px 0 #000, 6px 6px 0 #000,' +
+        '-6px 0 0 #000, 6px 0 0 #000, 0 -6px 0 #000, 0 6px 0 #000,' +
+        '0 14px 28px rgba(0,0,0,0.55)';
+
+      const glowShadow = config.headlineGlow
+        ? `, ${glowStops.close} ${accent.hex}, ${glowStops.far} ${accent.hex}`
+        : '';
+
+      const sparkleCount = Math.max(0, Math.min(12, config.sparkleCount));
+      const sparkles = SPARKLE_POSITIONS.slice(0, sparkleCount);
+
+      const stripBg = `linear-gradient(180deg, ${accent.hex} 0%, ${lighten(accent.hex, 0.45)} 50%, ${accent.hex} 100%)`;
+
+      return (
+        <div className="thumb-stage">
+          <div
+            ref={canvasRef}
+            className="thumb-canvas vignette"
+            style={{ transform: `scale(${scale})` }}
+          >
+            <img
+              src={bg.url}
+              alt=""
+              crossOrigin="anonymous"
+              style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                objectFit: 'cover',
+              }}
+            />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0) 38%, rgba(0,0,0,0.7) 100%)',
+            }} />
+
+            {config.lightLeak && (
+              <div
+                className="light-leak"
+                style={{
+                  position: 'absolute',
+                  top: -260,
+                  right: -260,
+                  width: 1100,
+                  height: 1100,
+                  background: 'radial-gradient(circle, rgba(255,220,140,0.55) 0%, rgba(255,180,80,0.25) 35%, rgba(255,180,80,0) 70%)',
+                  mixBlendMode: 'screen',
+                  pointerEvents: 'none',
+                  zIndex: 1,
+                }}
+              />
+            )}
+
+            {config.showAccentStrip && (
+              <div
+                className={`diagonal-banner ${config.shineSweep ? 'shine-target' : ''}`}
+                style={{
+                  background: stripBg,
+                  left: 60,
+                  top: config.position === 'top' ? 360 : (config.position === 'bottom' ? 720 : 540),
+                  width: 1100,
+                  height: 100,
+                  zIndex: 1,
+                  borderTop: '4px solid rgba(255,255,255,0.7)',
+                  borderBottom: `4px solid ${rgba('#000000', 0.25)}`,
+                }}
+              >
+                <div className="accent-strip-gloss" />
+              </div>
+            )}
+
+            <div
+              className="font-bhs"
+              style={{
+                position: 'absolute',
+                fontSize: `${config.fontSize}px`,
+                fontWeight: 900,
+                zIndex: 2,
+                color: '#fff',
+                textShadow: baseStroke + glowShadow,
+                letterSpacing: '-0.02em',
+                lineHeight: 1.05,
+                ...positionStyle,
+                ...alignStyle,
+              }}
+            >
+              {lines.map((line, i) => (
+                <div key={i} style={{ marginBottom: 6 }}>
+                  {line.split(/(\*[^*]+\*)/g).map((chunk, j) => {
+                    if (chunk.startsWith('*') && chunk.endsWith('*') && chunk.length > 2) {
+                      const keyword = chunk.slice(1, -1);
+                      const accentGlow = config.headlineGlow
+                        ? `, ${glowStops.close} ${accent.hex}, ${glowStops.far} ${accent.hex}, 0 0 90px ${rgba(accent.hex, 0.6)}`
+                        : '';
+                      const offsetLayers =
+                        `8px 8px 0 ${accent.hex}, 7px 7px 0 ${accent.hex}, 6px 6px 0 ${accent.hex}`;
+                      return (
+                        <span
+                          key={j}
+                          className="keyword-wiggle"
+                          style={{
+                            position: 'relative',
+                            color: '#fff',
+                            fontSize: `${Math.round(config.fontSize * 1.15)}px`,
+                            textShadow: `${offsetLayers}, ${baseStroke}${accentGlow}`,
+                            padding: '0 0.05em',
+                            display: 'inline-block',
+                          }}
+                        >
+                          {config.keywordHighlighter && (
+                            <span
+                              className="keyword-highlighter"
+                              style={{
+                                background: `linear-gradient(90deg, ${rgba(accent.hex, 0.85)}, ${rgba(lighten(accent.hex, 0.35), 0.95)}, ${rgba(accent.hex, 0.85)})`,
+                              }}
+                            />
+                          )}
+                          {keyword}
+                        </span>
+                      );
+                    }
+                    return <span key={j}>{chunk}</span>;
+                  })}
+                </div>
+              ))}
+            </div>
+
+            {sparkles.map((s, i) => (
+              <div
+                key={i}
+                className="sparkle"
+                style={{
+                  top: s.top,
+                  left: s.left,
+                  width: s.size,
+                  height: s.size,
+                  animationDelay: `${s.delay}s`,
+                  '--rot': `rotate(${s.rot}deg)`,
+                }}
+              >
+                <SparkleSVG color={accent.hex} size={s.size} />
+              </div>
+            ))}
+
+            {config.showBadge && config.badgeText && (
+              <div
+                className={config.badgePulse ? 'badge-pulse' : ''}
+                style={{
+                  position: 'absolute',
+                  top: 70,
+                  right: 80,
+                  background: badge.hex,
+                  color: badge.text,
+                  padding: '20px 36px',
+                  fontFamily: "'Black Han Sans', sans-serif",
+                  fontSize: 78,
+                  borderRadius: 18,
+                  transform: 'rotate(6deg)',
+                  border: '6px solid #fff',
+                  outline: `4px dashed ${accent.hex}`,
+                  outlineOffset: '4px',
+                  boxShadow: `0 16px 30px rgba(0,0,0,0.35), 0 0 40px ${rgba(accent.hex, 0.5)}`,
+                  zIndex: 5,
+                  letterSpacing: '-0.01em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <span style={{ fontSize: 56, lineHeight: 1 }}>🔥</span>
+                {config.badgeText}
+              </div>
+            )}
+
+            {config.showBranding && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 50,
+                  left: 60,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 22,
+                  background: 'rgba(0,0,0,0.55)',
+                  backdropFilter: 'blur(8px)',
+                  padding: '18px 30px 18px 18px',
+                  borderRadius: 100,
+                  zIndex: 5,
+                  border: '4px solid #fff',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'relative',
+                    width: 90,
+                    height: 90,
+                    borderRadius: '50%',
+                    boxShadow: `0 0 0 6px ${accent.hex}, 0 0 30px 6px ${rgba(accent.hex, 0.85)}`,
+                    animation: 'avatar-glow 2.4s ease-in-out infinite',
+                    '--glow-color': accent.hex,
+                  }}
+                >
+                  <img
+                    src={YOUTUBER.avatar}
+                    alt=""
+                    crossOrigin="anonymous"
+                    style={{
+                      width: 90, height: 90, borderRadius: '50%',
+                      objectFit: 'cover', border: '4px solid #fff',
+                      display: 'block',
+                    }}
+                  />
+                </div>
+                <div style={{ color: '#fff', fontFamily: "'Black Han Sans', sans-serif", fontSize: 52, lineHeight: 1, letterSpacing: '-0.02em' }}>
+                  {YOUTUBER.channel}
+                </div>
+              </div>
+            )}
+
+            {config.cornerRibbon && config.cornerRibbonText && (
+              <div
+                className="corner-ribbon"
+                style={{
+                  background: `linear-gradient(180deg, ${lighten(accent.hex, 0.2)}, ${accent.hex})`,
+                  color: accent.text,
+                }}
+              >
+                {config.cornerRibbonText}
+              </div>
+            )}
+
+            <div style={{
+              position: 'absolute', top: 24, right: 24,
+              background: 'rgba(0,0,0,0.6)', color: '#fff',
+              fontSize: 22, padding: '6px 14px', borderRadius: 999,
+              letterSpacing: 1,
+              zIndex: 7,
+            }}>
+              1920 × 1080
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // YouTube Search-Result Mockup
+    // ========================================
+    function SearchResultPreview({ config, label }) {
+      return (
+        <div className="bg-white rounded-xl border border-slate-200 p-3">
+          <div className="text-[11px] font-semibold text-slate-500 mb-2">
+            YouTube 검색결과 미리보기 {label && <span className="text-slate-400">· {label}</span>}
+          </div>
+          <div className="flex gap-3">
+            <div className="relative w-44 aspect-video rounded-lg overflow-hidden bg-black flex-shrink-0 shadow">
+              <MiniThumb config={config} />
+              <div className="absolute bottom-1 right-1 bg-black/85 text-white text-[10px] px-1 rounded">14:23</div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-slate-900 leading-snug line-clamp-2">
+                {(config.headline || '').replace(/\*/g, '').replace(/\n/g, ' ')}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1.5 flex items-center gap-1">
+                <img src={YOUTUBER.avatar} className="w-4 h-4 rounded-full" alt="" />
+                {YOUTUBER.channel}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">조회수 12만회 · 3일 전</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function MiniThumb({ config }) {
+      const accent = ACCENT_COLORS.find(c => c.id === config.accentColorId) || ACCENT_COLORS[0];
+      const badge = BADGE_COLORS.find(c => c.id === config.badgeColorId) || BADGE_COLORS[0];
+      const bg = BG_PRESETS.find(b => b.id === config.bgId) || BG_PRESETS[0];
+      const lines = (config.headline || '').split('\n');
+      const positionClass = config.position === 'top' ? 'top-2' : config.position === 'bottom' ? 'bottom-2' : 'top-1/2 -translate-y-1/2';
+      const alignClass = config.align === 'left' ? 'text-left left-2 right-auto' : config.align === 'right' ? 'text-right right-2 left-auto' : 'text-center left-2 right-2';
+
+      return (
+        <div className="absolute inset-0">
+          <img src={bg.url} alt="" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-black/55" />
+          {config.showAccentStrip && (
+            <div className="absolute" style={{
+              background: `linear-gradient(180deg, ${accent.hex}, ${lighten(accent.hex, 0.35)}, ${accent.hex})`,
+              height: 10, width: '70%',
+              left: '4%',
+              top: config.position === 'top' ? '34%' : config.position === 'bottom' ? '68%' : '50%',
+              transform: 'rotate(-8deg)',
+            }} />
+          )}
+          {config.sparkleCount > 0 && SPARKLE_POSITIONS.slice(0, Math.min(4, config.sparkleCount)).map((s, i) => (
+            <div key={i} className="absolute" style={{ top: s.top, left: s.left, width: 8, height: 8 }}>
+              <SparkleSVG color={accent.hex} size={8} />
+            </div>
+          ))}
+          <div
+            className={`absolute font-bhs ${positionClass} ${alignClass}`}
+            style={{
+              fontSize: Math.max(10, Math.round(config.fontSize / 11)) + 'px',
+              lineHeight: 1.05,
+              color: '#fff',
+              textShadow:
+                '-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 4px rgba(0,0,0,0.7)' +
+                (config.headlineGlow ? `, 0 0 6px ${accent.hex}` : ''),
+            }}
+          >
+            {lines.map((line, i) => (
+              <div key={i}>
+                {line.split(/(\*[^*]+\*)/g).map((chunk, j) => {
+                  if (chunk.startsWith('*') && chunk.endsWith('*') && chunk.length > 2) {
+                    return <span key={j} style={{ color: accent.hex }}>{chunk.slice(1, -1)}</span>;
+                  }
+                  return <span key={j}>{chunk}</span>;
+                })}
+              </div>
+            ))}
+          </div>
+          {config.showBadge && config.badgeText && (
+            <div
+              className="absolute font-bhs"
+              style={{
+                top: 6, right: 6,
+                background: badge.hex, color: badge.text,
+                padding: '2px 6px', fontSize: 9, borderRadius: 4,
+                transform: 'rotate(6deg)',
+                border: '1.5px solid #fff',
+              }}
+            >
+              {config.badgeText}
+            </div>
+          )}
+          {config.cornerRibbon && config.cornerRibbonText && (
+            <div className="absolute font-bhs" style={{
+              top: 6, left: -16, width: 70, transform: 'rotate(-45deg)',
+              background: accent.hex, color: accent.text,
+              fontSize: 8, textAlign: 'center', padding: '2px 0',
+              fontWeight: 900,
+            }}>
+              {config.cornerRibbonText}
+            </div>
+          )}
+          {config.showBranding && (
+            <div className="absolute bottom-1 left-1 flex items-center gap-1 bg-black/60 text-white text-[7px] px-1 py-0.5 rounded-full">
+              <img src={YOUTUBER.avatar} className="w-2.5 h-2.5 rounded-full" alt="" />
+              <span className="font-bhs">{YOUTUBER.channel}</span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ========================================
+    // VariantStage — single canvas with badge, label, winner indicators
+    // ========================================
+    function VariantStage({
+      variantKey,        // 'A' | 'B'
+      config,
+      scale,
+      canvasRef,
+      isActive,
+      isWinner,
+      onPickAsActive,
+    }) {
+      return (
+        <div className="relative">
+          {/* Big A/B badge in the corner of the wrapper (NOT inside design) */}
+          <div className={`variant-badge ${variantKey}`}>{variantKey}</div>
+
+          {/* Click-to-activate target wrapping the scaled canvas */}
+          <div
+            onClick={onPickAsActive}
+            className={`rounded-2xl p-3 transition cursor-pointer ${
+              isWinner
+                ? 'winner-ring bg-emerald-50/30'
+                : isActive
+                  ? `bg-slate-900/70 ${variantKey === 'A' ? 'stage-active-A' : 'stage-active-B'}`
+                  : 'bg-slate-800/70 hover:bg-slate-800'
+            }`}
+            title={isActive ? '편집 중' : '클릭하여 이 버전 편집'}
+          >
+            <div className="flex items-center justify-between mb-2 px-1">
+              <div className="text-white/90 text-xs font-bold tracking-wide flex items-center gap-2">
+                <span className="font-bhs text-base">{variantKey} 버전</span>
+                {isActive && (
+                  <span className="bg-white/20 text-white text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wider">
+                    편집 중
+                  </span>
+                )}
+              </div>
+              <div className="text-[10px] font-mono text-white/60 bg-white/10 px-2 py-0.5 rounded">
+                1920 × 1080
+              </div>
+            </div>
+            <div className="relative">
+              <ThumbnailCanvas config={config} scale={scale} canvasRef={canvasRef} />
+              {isWinner && <div className="winner-stamp">✓ 선택됨</div>}
+            </div>
+          </div>
+
+          {/* Per-variant search-result preview */}
+          <div className="mt-3">
+            <SearchResultPreview config={config} label={`${variantKey} 버전`} />
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Editor Panel — Controls (operates on active variant)
+    // ========================================
+    function EditorPanel({
+      activeVariant,
+      setActiveVariant,
+      config,
+      setConfig,
+      onSwap,
+      onCopyAToB,
+      onCopyBToA,
+      onAutoDifferentiate,
+      onDownloadActive,
+      onDownloadBoth,
+      downloading,
+    }) {
+      const update = (patch) => setConfig(prev => ({ ...prev, ...patch }));
+
+      const tabBaseClass = 'flex-1 py-2.5 text-sm font-bhs rounded-lg border-2 transition tracking-tight';
+
+      return (
+        <div className="space-y-4 lg:max-h-[calc(100vh-100px)] lg:overflow-y-auto scrollbar-thin pr-1">
+          {/* ── A/B Variant Tabs ── */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+            <div className="text-[11px] font-semibold text-slate-500 mb-2 px-1">
+              편집할 버전을 선택하세요
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setActiveVariant('A')}
+                className={`${tabBaseClass} ${
+                  activeVariant === 'A'
+                    ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white border-blue-700 shadow'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+                }`}
+              >
+                <span className="text-lg mr-1">🅰️</span> A 편집
+              </button>
+              <button
+                onClick={() => setActiveVariant('B')}
+                className={`${tabBaseClass} ${
+                  activeVariant === 'B'
+                    ? 'bg-gradient-to-br from-pink-600 to-orange-500 text-white border-pink-700 shadow'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-400'
+                }`}
+              >
+                <span className="text-lg mr-1">🅱️</span> B 편집
+              </button>
+            </div>
+
+            {/* A↔B utility row */}
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <Button variant="secondary" size="sm" onClick={onSwap}>
+                🔁 A↔B 스왑
+              </Button>
+              <Button variant="secondary" size="sm" onClick={onAutoDifferentiate} title="현재 버전을 기준으로 다른 버전을 자동 변형">
+                🎲 차이 자동 생성
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onCopyAToB} className="border border-slate-200">
+                📋 A → B
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onCopyBToA} className="border border-slate-200">
+                📋 B → A
+              </Button>
+            </div>
+          </div>
+
+          {/* YouTuber info */}
+          <Card className="bg-gradient-to-br from-rose-50 to-orange-50 border-rose-100">
+            <div className="flex items-center gap-3">
+              <img src={YOUTUBER.avatar} alt="" className="w-14 h-14 rounded-full ring-4 ring-white shadow" />
+              <div className="min-w-0">
+                <div className="font-bhs text-lg text-slate-900 leading-tight">{YOUTUBER.channel}</div>
+                <div className="text-[11px] text-slate-500">{YOUTUBER.handle}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-3 text-center">
+              <div className="bg-white/70 rounded-lg py-2">
+                <div className="text-[10px] text-slate-500">구독자</div>
+                <div className="font-bold text-rose-600 text-sm">{YOUTUBER.subscribers}</div>
+              </div>
+              <div className="bg-white/70 rounded-lg py-2">
+                <div className="text-[10px] text-slate-500">영상</div>
+                <div className="font-bold text-rose-600 text-sm">{YOUTUBER.videos}</div>
+              </div>
+              <div className="bg-white/70 rounded-lg py-2">
+                <div className="text-[10px] text-slate-500">장르</div>
+                <div className="font-bold text-rose-600 text-[11px] truncate">여행 Vlog</div>
+              </div>
+            </div>
+            <div className="text-[11px] text-slate-600 mt-2 leading-relaxed">{YOUTUBER.bio}</div>
+          </Card>
+
+          {/* ✨ Sparkle / Glow */}
+          <Card
+            className="bg-gradient-to-br from-amber-50 via-yellow-50 to-rose-50 border-amber-200"
+            title={`✨ 반짝 효과 (${activeVariant} 버전)`}
+            subtitle="현재 편집 중인 버전에만 적용됩니다"
+          >
+            <Toggle
+              checked={config.sparkleCount > 0}
+              onChange={(v) => update({ sparkleCount: v ? 8 : 0 })}
+              label="✦ 반짝이 별 표시"
+            />
+            <div className="mt-2">
+              <Label hint={`${config.sparkleCount}개`}>별 개수 (0–12)</Label>
+              <input
+                type="range"
+                min={0}
+                max={12}
+                step={1}
+                value={config.sparkleCount}
+                onChange={(e) => update({ sparkleCount: Number(e.target.value) })}
+              />
+            </div>
+
+            <div className="border-t border-amber-200 my-3" />
+
+            <Toggle
+              checked={config.headlineGlow}
+              onChange={(v) => update({ headlineGlow: v })}
+              label="🌟 헤드라인 글로우 (네온)"
+            />
+            {config.headlineGlow && (
+              <div className="mt-2">
+                <Label>글로우 강도</Label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { v: 'low',    label: '약' },
+                    { v: 'medium', label: '중' },
+                    { v: 'high',   label: '강' },
+                  ].map(opt => (
+                    <button
+                      key={opt.v}
+                      onClick={() => update({ glowIntensity: opt.v })}
+                      className={`py-1.5 text-xs font-bold rounded-lg border transition ${config.glowIntensity === opt.v ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-300'}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="border-t border-amber-200 my-3" />
+
+            <Toggle
+              checked={config.shineSweep}
+              onChange={(v) => update({ shineSweep: v })}
+              label="✨ 샤인 스윕 (액센트 스트립)"
+            />
+            <Toggle
+              checked={config.keywordHighlighter}
+              onChange={(v) => update({ keywordHighlighter: v })}
+              label="🖍️ 키워드 형광펜 강조"
+            />
+            <Toggle
+              checked={config.badgePulse}
+              onChange={(v) => update({ badgePulse: v })}
+              label="💗 뱃지 펄스 애니메이션"
+            />
+            <Toggle
+              checked={config.lightLeak}
+              onChange={(v) => update({ lightLeak: v })}
+              label="💡 라이트 리크 (우상단)"
+            />
+
+            <div className="border-t border-amber-200 my-3" />
+
+            <Toggle
+              checked={config.cornerRibbon}
+              onChange={(v) => update({ cornerRibbon: v })}
+              label="🎀 코너 리본 (좌상단)"
+            />
+            {config.cornerRibbon && (
+              <input
+                type="text"
+                value={config.cornerRibbonText}
+                onChange={(e) => update({ cornerRibbonText: e.target.value })}
+                maxLength={8}
+                className="w-full mt-2 text-xs border border-slate-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-amber-400 font-bhs"
+                placeholder="Ep.12"
+              />
+            )}
+          </Card>
+
+          {/* Background presets */}
+          <Card title="배경 사진" subtitle="여행 테마 5종">
+            <div className="grid grid-cols-2 gap-2">
+              {BG_PRESETS.map(bg => (
+                <button
+                  key={bg.id}
+                  onClick={() => update({ bgId: bg.id })}
+                  className={`relative rounded-lg overflow-hidden aspect-video transition ring-2 ${config.bgId === bg.id ? 'ring-rose-500' : 'ring-transparent hover:ring-slate-300'}`}
+                >
+                  <img src={bg.url} alt={bg.label} className="w-full h-full object-cover" />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent text-white text-[10px] font-bold px-2 py-1">
+                    {bg.label}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Headline */}
+          <Card title="메인 카피 (헤드라인)" subtitle="*별표*로 감싸면 강조색 적용 / Enter로 줄바꿈">
+            <textarea
+              value={config.headline}
+              onChange={(e) => update({ headline: e.target.value })}
+              rows={3}
+              maxLength={80}
+              className="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-rose-400 font-bhs resize-none"
+              placeholder="예) 월급 200으로\n동남아 *한달살기*"
+            />
+            <div className="flex items-center justify-between mt-1.5">
+              <span className="text-[10px] text-slate-400">한 줄 최대 ~25자 권장</span>
+              <span className="text-[10px] text-slate-500">{config.headline.length}/80</span>
+            </div>
+          </Card>
+
+          {/* Sub badge */}
+          <Card title="서브 뱃지" subtitle="우상단 스티커 (🔥 자동 추가)">
+            <input
+              type="text"
+              value={config.badgeText}
+              onChange={(e) => update({ badgeText: e.target.value })}
+              maxLength={10}
+              className="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-rose-400 font-bhs"
+              placeholder="리얼후기"
+            />
+            <Label hint="">뱃지 색상</Label>
+            <div className="flex gap-2">
+              {BADGE_COLORS.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => update({ badgeColorId: c.id })}
+                  className={`w-8 h-8 rounded-lg transition ring-2 ${config.badgeColorId === c.id ? 'ring-rose-500 scale-110' : 'ring-transparent'}`}
+                  style={{ background: c.hex }}
+                  title={c.label}
+                />
+              ))}
+            </div>
+          </Card>
+
+          {/* Accent color */}
+          <Card title="강조 색상 (액센트)" subtitle="스트립 + 강조 텍스트 + 반짝이">
+            <div className="flex gap-2 flex-wrap">
+              {ACCENT_COLORS.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => update({ accentColorId: c.id })}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold border-2 transition ${config.accentColorId === c.id ? 'border-slate-900 scale-105' : 'border-slate-200'}`}
+                  style={{ background: c.hex, color: c.text }}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Font size */}
+          <Card title="헤드라인 폰트 크기" subtitle={`${config.fontSize}px`}>
+            <input
+              type="range"
+              min={80}
+              max={220}
+              step={4}
+              value={config.fontSize}
+              onChange={(e) => update({ fontSize: Number(e.target.value) })}
+            />
+            <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+              <span>80</span><span>140 (기본)</span><span>220</span>
+            </div>
+          </Card>
+
+          {/* Position & Align */}
+          <Card title="위치 / 정렬">
+            <Label>세로 위치</Label>
+            <div className="grid grid-cols-3 gap-1.5 mb-3">
+              {[
+                { v: 'top', label: '상단' },
+                { v: 'center', label: '중앙' },
+                { v: 'bottom', label: '하단' },
+              ].map(opt => (
+                <button
+                  key={opt.v}
+                  onClick={() => update({ position: opt.v })}
+                  className={`py-2 text-xs font-bold rounded-lg border transition ${config.position === opt.v ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:border-slate-500'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <Label>가로 정렬</Label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { v: 'left', label: '왼쪽' },
+                { v: 'center', label: '가운데' },
+                { v: 'right', label: '오른쪽' },
+              ].map(opt => (
+                <button
+                  key={opt.v}
+                  onClick={() => update({ align: opt.v })}
+                  className={`py-2 text-xs font-bold rounded-lg border transition ${config.align === opt.v ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300 hover:border-slate-500'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </Card>
+
+          {/* Toggles */}
+          <Card title="요소 표시/숨김">
+            <Toggle checked={config.showAccentStrip} onChange={(v) => update({ showAccentStrip: v })} label="액센트 스트립" />
+            <Toggle checked={config.showBranding} onChange={(v) => update({ showBranding: v })} label="채널 브랜딩 (좌하단)" />
+            <Toggle checked={config.showBadge} onChange={(v) => update({ showBadge: v })} label="서브 뱃지 (우상단)" />
+          </Card>
+
+          {/* Download row — sticky */}
+          <div className="sticky bottom-0 bg-white pt-3 pb-3 -mx-1 px-1 border-t border-slate-200 space-y-2">
+            <Button
+              variant="dark"
+              size="lg"
+              className="w-full"
+              onClick={onDownloadActive}
+              disabled={downloading}
+            >
+              {downloading ? '저장 중...' : `PNG 다운로드 · ${activeVariant} 버전`}
+            </Button>
+            <Button
+              variant="secondary"
+              size="md"
+              className="w-full"
+              onClick={onDownloadBoth}
+              disabled={downloading}
+            >
+              📥 A·B 둘 다 PNG 저장
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // App Component (root)
+    // ========================================
+    function App() {
+      // ── A/B variant state shape ──
+      const [variants, setVariants] = useState({ A: DEFAULT_A, B: DEFAULT_B });
+      const [activeVariant, setActiveVariant] = useState('A');
+      const [winner, setWinner] = useState(null); // 'A' | 'B' | null
+
+      const [scaleA, setScaleA] = useState(0.3);
+      const [scaleB, setScaleB] = useState(0.3);
+      const [downloading, setDownloading] = useState(false);
+      const [modalOpen, setModalOpen] = useState(false);
+
+      const stageWrapperA = useRef(null);
+      const stageWrapperB = useRef(null);
+      const canvasRefA = useRef(null);
+      const canvasRefB = useRef(null);
+
+      // Recompute scale per stage on resize
+      useEffect(() => {
+        const recalc = () => {
+          if (stageWrapperA.current) {
+            setScaleA(stageWrapperA.current.clientWidth / 1920);
+          }
+          if (stageWrapperB.current) {
+            setScaleB(stageWrapperB.current.clientWidth / 1920);
+          }
+        };
+        recalc();
+        // Run again after a frame to catch initial layout
+        const t = setTimeout(recalc, 50);
+        window.addEventListener('resize', recalc);
+        return () => {
+          window.removeEventListener('resize', recalc);
+          clearTimeout(t);
+        };
+      }, []);
+
+      // setConfig accepts a value or updater function and patches the active variant
+      const setActiveConfig = useCallback((updater) => {
+        setVariants(prev => {
+          const current = prev[activeVariant];
+          const next = typeof updater === 'function' ? updater(current) : updater;
+          return { ...prev, [activeVariant]: next };
+        });
+      }, [activeVariant]);
+
+      // Swap A and B
+      const handleSwap = useCallback(() => {
+        setVariants(prev => ({ A: prev.B, B: prev.A }));
+        setWinner(prev => prev === 'A' ? 'B' : prev === 'B' ? 'A' : null);
+      }, []);
+
+      const handleCopyAToB = useCallback(() => {
+        setVariants(prev => ({ ...prev, B: { ...prev.A } }));
+      }, []);
+
+      const handleCopyBToA = useCallback(() => {
+        setVariants(prev => ({ ...prev, A: { ...prev.B } }));
+      }, []);
+
+      // 차이 자동 생성: deterministic transform of the *active* variant into the other slot
+      const handleAutoDifferentiate = useCallback(() => {
+        setVariants(prev => {
+          const src = prev[activeVariant];
+          const otherKey = activeVariant === 'A' ? 'B' : 'A';
+
+          // 1) Next bg preset (cycle through BG_PRESETS)
+          const bgIdx = BG_PRESETS.findIndex(b => b.id === src.bgId);
+          const nextBg = BG_PRESETS[(bgIdx + 1) % BG_PRESETS.length];
+
+          // 2) Contrasting accent
+          const nextAccent = ACCENT_CONTRAST[src.accentColorId] || 'pink';
+
+          // 3) Flip vertical position top<->bottom (center -> bottom)
+          const nextPosition =
+            src.position === 'top' ? 'bottom' :
+            src.position === 'bottom' ? 'top' : 'bottom';
+
+          const transformed = {
+            ...src,
+            bgId: nextBg.id,
+            accentColorId: nextAccent,
+            position: nextPosition,
+            // small additional differentiation: tweak sparkles count modestly
+            sparkleCount: src.sparkleCount > 6 ? Math.max(3, src.sparkleCount - 4) : Math.min(12, src.sparkleCount + 4),
+          };
+
+          return { ...prev, [otherKey]: transformed };
+        });
+      }, [activeVariant]);
+
+      // PNG export of a single canvas ref
+      const exportCanvas = useCallback(async (node, filename) => {
+        if (!node) return false;
+        const originalTransform = node.style.transform;
+        node.style.transform = 'scale(1)';
+        try {
+          const canvas = await window.html2canvas(node, {
+            width: 1920,
+            height: 1080,
+            scale: 1,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: null,
+            logging: false,
+          });
+          const link = document.createElement('a');
+          link.download = filename;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+          return true;
+        } finally {
+          node.style.transform = originalTransform;
+        }
+      }, []);
+
+      const handleDownloadActive = useCallback(async () => {
+        setDownloading(true);
+        try {
+          const node = activeVariant === 'A' ? canvasRefA.current : canvasRefB.current;
+          await exportCanvas(node, `joe-thumbnail-${activeVariant}-${Date.now()}.png`);
+        } catch (err) {
+          console.error(err);
+          setModalOpen(true);
+        } finally {
+          setDownloading(false);
+        }
+      }, [activeVariant, exportCanvas]);
+
+      const handleDownloadBoth = useCallback(async () => {
+        setDownloading(true);
+        try {
+          await exportCanvas(canvasRefA.current, `joe-thumbnail-A.png`);
+          // small delay so the browser doesn't block the second download
+          await new Promise(r => setTimeout(r, 300));
+          await exportCanvas(canvasRefB.current, `joe-thumbnail-B.png`);
+        } catch (err) {
+          console.error(err);
+          setModalOpen(true);
+        } finally {
+          setDownloading(false);
+        }
+      }, [exportCanvas]);
+
+      const activeConfig = variants[activeVariant];
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          <Header />
+
+          <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 lg:px-6 py-5 grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-5">
+            {/* Left — Editor (operates on active variant) */}
+            <aside className="order-2 lg:order-1">
+              <EditorPanel
+                activeVariant={activeVariant}
+                setActiveVariant={setActiveVariant}
+                config={activeConfig}
+                setConfig={setActiveConfig}
+                onSwap={handleSwap}
+                onCopyAToB={handleCopyAToB}
+                onCopyBToA={handleCopyBToA}
+                onAutoDifferentiate={handleAutoDifferentiate}
+                onDownloadActive={handleDownloadActive}
+                onDownloadBoth={handleDownloadBoth}
+                downloading={downloading}
+              />
+            </aside>
+
+            {/* Right — A/B side-by-side comparison */}
+            <section className="order-1 lg:order-2 space-y-4">
+              <div className="bg-slate-800 rounded-2xl p-4 lg:p-5 shadow-inner">
+                <div className="flex items-center justify-between mb-4 text-white/85">
+                  <div>
+                    <div className="font-bhs text-base">A/B 비교 뷰</div>
+                    <div className="text-[11px] text-white/60">두 버전을 동시에 보고 작은 사이즈에서 어느 쪽이 더 눈에 띄는지 확인하세요</div>
+                  </div>
+                  <div className="text-[11px] font-mono bg-white/10 px-2 py-1 rounded hidden sm:block">
+                    16:9 · 각 1920×1080
+                  </div>
+                </div>
+
+                {/* Two stages side-by-side (stack on mobile) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 md:gap-6 pt-4">
+                  <div ref={stageWrapperA}>
+                    <VariantStage
+                      variantKey="A"
+                      config={variants.A}
+                      scale={scaleA}
+                      canvasRef={canvasRefA}
+                      isActive={activeVariant === 'A'}
+                      isWinner={winner === 'A'}
+                      onPickAsActive={() => setActiveVariant('A')}
+                    />
+                  </div>
+                  <div ref={stageWrapperB}>
+                    <VariantStage
+                      variantKey="B"
+                      config={variants.B}
+                      scale={scaleB}
+                      canvasRef={canvasRefB}
+                      isActive={activeVariant === 'B'}
+                      isWinner={winner === 'B'}
+                      onPickAsActive={() => setActiveVariant('B')}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Winner picker */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 lg:p-5">
+                <div className="flex items-baseline justify-between mb-3">
+                  <div>
+                    <div className="font-bhs text-lg text-slate-900">🏆 내가 고르는 썸네일</div>
+                    <div className="text-xs text-slate-500">
+                      {winner
+                        ? <>현재 선택: <span className="font-bold text-emerald-600">{winner} 버전</span></>
+                        : '두 버전을 비교하고 더 좋은 쪽을 선택하세요'}
+                    </div>
+                  </div>
+                  {winner && (
+                    <button
+                      onClick={() => setWinner(null)}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 underline"
+                    >
+                      선택 취소
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setWinner('A')}
+                    className={`rounded-xl p-4 text-left font-bhs text-lg transition border-2 ${
+                      winner === 'A'
+                        ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white border-blue-700 shadow-lg scale-[1.02]'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-blue-50'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">👈 A로 갈게요</div>
+                    <div className={`text-xs font-noto ${winner === 'A' ? 'text-white/90' : 'text-slate-500'}`}>
+                      {(variants.A.headline || '').replace(/\*/g, '').replace(/\n/g, ' / ')}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setWinner('B')}
+                    className={`rounded-xl p-4 text-right font-bhs text-lg transition border-2 ${
+                      winner === 'B'
+                        ? 'bg-gradient-to-br from-pink-600 to-orange-500 text-white border-pink-700 shadow-lg scale-[1.02]'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:border-pink-400 hover:bg-pink-50'
+                    }`}
+                  >
+                    <div className="text-2xl mb-1">B로 갈게요 👉</div>
+                    <div className={`text-xs font-noto ${winner === 'B' ? 'text-white/90' : 'text-slate-500'}`}>
+                      {(variants.B.headline || '').replace(/\*/g, '').replace(/\n/g, ' / ')}
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Tips */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 leading-relaxed">
+                <div className="font-bold mb-1">A/B 비교 팁</div>
+                <ul className="list-disc list-inside space-y-0.5">
+                  <li>두 버전은 <b>의도적으로 달라야</b> 비교 의미가 있어요. 배경·강조색·헤드라인 위치 중 최소 2개는 다르게</li>
+                  <li><b>차이 자동 생성</b> 버튼을 누르면 활성 버전 기준으로 다른 옵션이 자동으로 들어갑니다</li>
+                  <li>아래 "검색결과 미리보기"에서 작게 봤을 때 어느 쪽이 더 잘 읽히는지 비교하세요</li>
+                  <li>썸네일을 클릭해도 그 버전을 편집 모드로 전환할 수 있어요</li>
+                </ul>
+              </div>
+            </section>
+          </main>
+
+          <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="다운로드 가이드">
+            <p className="mb-2">자동 PNG 저장이 실패했어요 (배경 이미지 CORS 이슈일 수 있습니다).</p>
+            <p className="font-semibold mb-1">스크린샷으로 저장하기</p>
+            <ul className="list-disc list-inside space-y-1 text-slate-600">
+              <li>macOS: <kbd className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">⌘ + Shift + 4</kbd> 후 영역 선택</li>
+              <li>Windows: <kbd className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">Win + Shift + S</kbd></li>
+              <li>또는 미리보기 영역에서 우클릭 → "이미지 저장"</li>
+            </ul>
+          </Modal>
+
+          <footer className="text-center text-[11px] text-slate-400 py-4">
+            joe튜브 썸네일 스튜디오 · A/B 비교 모드 · 단일 파일 React 데모 · {new Date().getFullYear()}
+          </footer>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Render
+    // ========================================
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
