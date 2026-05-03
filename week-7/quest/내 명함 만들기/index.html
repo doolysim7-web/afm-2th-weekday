@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>심진경 명함</title>
+<style>
+  /* ========= Print 설정 ========= */
+  @page {
+    size: 90mm 54mm;
+    margin: 0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 90mm;
+    background: #e9e9ec;
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ========= 색상 변수 ========= */
+  :root {
+    --orange: #FF6A00;
+    --orange-deep: #E55400;
+    --orange-soft: #FFE4D2;
+    --ink: #1A1A1A;
+    --ink-soft: #4A4A4A;
+    --paper: #FFFFFF;
+    --line: #E5E5E5;
+  }
+
+  /* ========= 카드 공통 ========= */
+  .card {
+    width: 90mm;
+    height: 54mm;
+    background: var(--paper);
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+    break-after: page;
+  }
+  .card:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  /* ========= 화면(미리보기)에서만 카드를 띄움 ========= */
+  @media screen {
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      padding: 40px 0;
+      min-height: 100vh;
+    }
+    .card {
+      box-shadow: 0 18px 40px rgba(0,0,0,0.18), 0 4px 10px rgba(0,0,0,0.08);
+      border-radius: 3mm;
+    }
+    .preview-label {
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      color: #888;
+      text-transform: uppercase;
+      margin-bottom: -16px;
+    }
+  }
+
+  /* ========= 인쇄 시: 미리보기 라벨 숨김 ========= */
+  @media print {
+    .preview-label { display: none !important; }
+    body { background: #fff; }
+  }
+
+  /* ============================================================
+     앞면 (FRONT)
+     - 좌측 4mm 오렌지 띠 + 좌상단 모노그램
+     - 큰 이름 / 한 줄 정의 / 직함·소속
+     - 하단 연락처 2단
+     ============================================================ */
+  .front {
+    padding: 6mm 6mm 5mm 11mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* 좌측 오렌지 띠 */
+  .front::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0;
+    width: 4mm;
+    height: 100%;
+    background: linear-gradient(180deg, var(--orange) 0%, var(--orange-deep) 100%);
+  }
+
+  /* 우상단 장식 도트 */
+  .front::after {
+    content: "";
+    position: absolute;
+    top: 5mm; right: 6mm;
+    width: 2.6mm; height: 2.6mm;
+    border-radius: 50%;
+    background: var(--orange);
+    box-shadow:
+      -4mm 0 0 var(--orange-soft),
+      -8mm 0 0 var(--orange-soft);
+  }
+
+  .front-top {
+    display: flex;
+    flex-direction: column;
+    gap: 1mm;
+  }
+
+  .monogram {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 10pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--orange);
+  }
+  .monogram .dot {
+    display: inline-block;
+    width: 1.4mm; height: 1.4mm;
+    background: var(--orange);
+    border-radius: 50%;
+    margin: 0 1mm 0.5mm 1mm;
+    vertical-align: middle;
+  }
+
+  .tagline {
+    font-size: 7.2pt;
+    color: var(--ink-soft);
+    letter-spacing: 0.01em;
+    line-height: 1.35;
+    margin-top: 1mm;
+  }
+  .tagline .accent {
+    color: var(--orange-deep);
+    font-weight: 700;
+  }
+
+  .name-block {
+    margin-top: 2.5mm;
+  }
+  .name-ko {
+    font-size: 22pt;
+    font-weight: 800;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+    line-height: 1;
+  }
+  .name-en {
+    font-size: 7pt;
+    font-weight: 500;
+    color: #999;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    margin-top: 1.2mm;
+  }
+
+  .role-row {
+    display: flex;
+    align-items: center;
+    gap: 2mm;
+    margin-top: 2mm;
+    font-size: 8pt;
+  }
+  .role-row .title {
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .role-row .divider {
+    width: 0.6mm; height: 0.6mm;
+    background: var(--orange);
+    border-radius: 50%;
+  }
+  .role-row .org {
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+
+  .front-bottom {
+    border-top: 0.3mm solid var(--line);
+    padding-top: 2.2mm;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1.2mm 3mm;
+    font-size: 7.4pt;
+    color: var(--ink-soft);
+  }
+  .front-bottom .label {
+    color: var(--orange-deep);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-size: 6.4pt;
+    text-transform: uppercase;
+    align-self: center;
+  }
+  .front-bottom .value {
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: 0.01em;
+  }
+
+  /* ============================================================
+     뒷면 (BACK)
+     - 오렌지 풀블리드 배경
+     - 큰 슬로건(타이포그래피)
+     - 하단: QR + 포트폴리오/이메일
+     ============================================================ */
+  .back {
+    background:
+      radial-gradient(circle at 88% 110%, rgba(255,255,255,0.18) 0%, transparent 45%),
+      linear-gradient(135deg, var(--orange) 0%, var(--orange-deep) 100%);
+    color: #fff;
+    padding: 6mm 6mm 5mm 6mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  /* 배경 데코: 큰 원 */
+  .back::before {
+    content: "";
+    position: absolute;
+    top: -18mm; right: -18mm;
+    width: 40mm; height: 40mm;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+  }
+  .back::after {
+    content: "";
+    position: absolute;
+    bottom: -14mm; left: -8mm;
+    width: 28mm; height: 28mm;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.06);
+  }
+
+  .back-top {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand-mark {
+    font-family: 'Georgia', serif;
+    font-size: 10pt;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .brand-tag {
+    font-size: 6.4pt;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    opacity: 0.85;
+    border: 0.3mm solid rgba(255,255,255,0.6);
+    padding: 0.8mm 2mm;
+    border-radius: 1mm;
+  }
+
+  .slogan-wrap {
+    position: relative;
+    margin-top: 1mm;
+  }
+  .quote-mark {
+    font-family: 'Georgia', serif;
+    font-size: 30pt;
+    line-height: 1;
+    opacity: 0.35;
+    position: absolute;
+    top: -3mm; left: -1mm;
+  }
+  .slogan {
+    position: relative;
+    font-size: 12pt;
+    font-weight: 800;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    padding-left: 4mm;
+  }
+  .slogan .hl {
+    background: rgba(255,255,255,0.2);
+    padding: 0 1mm;
+    border-radius: 0.6mm;
+  }
+  .slogan-sub {
+    margin-top: 1.8mm;
+    padding-left: 4mm;
+    font-size: 7pt;
+    line-height: 1.45;
+    opacity: 0.92;
+    font-weight: 400;
+  }
+
+  .back-bottom {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 3mm;
+  }
+  .qr-card {
+    background: #fff;
+    padding: 1.2mm;
+    border-radius: 1.4mm;
+    box-shadow: 0 1mm 2mm rgba(0,0,0,0.15);
+    line-height: 0;
+  }
+  .qr-card svg, .qr-card img {
+    display: block;
+    width: 14mm;
+    height: 14mm;
+  }
+  .qr-caption {
+    flex: 1;
+    text-align: right;
+    font-size: 6.6pt;
+    line-height: 1.5;
+    letter-spacing: 0.04em;
+  }
+  .qr-caption .small {
+    font-size: 5.8pt;
+    opacity: 0.75;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.6mm;
+  }
+  .qr-caption .big {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ FRONT ============ -->
+<div class="preview-label">— FRONT —</div>
+<div class="card front">
+  <div class="front-top">
+    <div class="monogram">JK<span class="dot"></span>SHIM</div>
+    <div class="tagline">
+      <span class="accent">현업의 언어</span>를 <span class="accent">코드</span>로 번역하는 개발자
+    </div>
+
+    <div class="name-block">
+      <div class="name-ko">심진경</div>
+      <div class="name-en">SHIM JINKYUNG</div>
+    </div>
+
+    <div class="role-row">
+      <span class="title">수석매니저</span>
+      <span class="divider"></span>
+      <span class="org">영업정보팀</span>
+    </div>
+  </div>
+
+  <div class="front-bottom">
+    <span class="label">M</span>
+    <span class="value">010-4819-4320</span>
+    <span class="label">E</span>
+    <span class="value">doolysim7@gmail.com</span>
+  </div>
+</div>
+
+<!-- ============ BACK ============ -->
+<div class="preview-label">— BACK —</div>
+<div class="card back">
+  <div class="back-top">
+    <div class="brand-mark">JK · SHIM</div>
+    <div class="brand-tag">DEVELOPER</div>
+  </div>
+
+  <div class="slogan-wrap">
+    <div class="quote-mark">“</div>
+    <div class="slogan">
+      현업의 언어를<br>
+      <span class="hl">코드</span>로 번역합니다.
+    </div>
+    <div class="slogan-sub">
+      Translating business needs into working software —<br>
+      가장 빠른 손, 가장 가까운 파트너.
+    </div>
+  </div>
+
+  <div class="back-bottom">
+    <div class="qr-card" id="qr"></div>
+    <div class="qr-caption">
+      <span class="small">SCAN TO CONNECT</span>
+      <span class="big">doolysim7@gmail.com</span>
+    </div>
+  </div>
+</div>
+
+<!-- QR 코드 생성 (오프라인 / 인쇄 안전) -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<script>
+  // 이메일 mailto QR
+  const qr = qrcode(0, 'M');
+  qr.addData('mailto:doolysim7@gmail.com');
+  qr.make();
+  document.getElementById('qr').innerHTML = qr.createSvgTag({
+    cellSize: 4,
+    margin: 0,
+    scalable: true
+  });
+</script>
+</body>
+</html>
