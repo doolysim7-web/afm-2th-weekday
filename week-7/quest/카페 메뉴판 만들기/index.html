@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, initial-scale=1">
+<title>쉼표책방 · 카페 메뉴판</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&family=Jua&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Serif+KR:wght@300;500;700&family=Single+Day&display=swap" rel="stylesheet">
+<style>
+  /* ─── 기본 토큰 ───────────────────────────── */
+  :root{
+    --paper:#FAF6EE;
+    --paper-deep:#F0E9DA;
+    --ink:#2A2522;
+    --ink-soft:#5A4F47;
+    --rule:#D9CFB8;
+
+    /* 장르 색상 */
+    --comic:#FFD60A;     /* 만화책 — 비비드 옐로우 */
+    --comic-ink:#3A2E00;
+    --novel:#6B1F2E;     /* 소설 — 버건디 */
+    --novel-ink:#FFF7F3;
+    --essay:#E8DCC4;     /* 수필 — 웜 베이지 */
+    --essay-ink:#4A3F2E;
+    --essay-deep:#B8A487;
+    --poem:#A4C2D9;      /* 시 — 미스트 블루 */
+    --poem-ink:#1F3A52;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  html,body{
+    background:#E8E0CE;
+    color:var(--ink);
+    font-family:'Noto Serif KR',serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  body{
+    display:flex;
+    justify-content:center;
+    padding:40px 0;
+  }
+
+  .menu{
+    width:1080px;
+    background:var(--paper);
+    background-image:
+      radial-gradient(circle at 10% 0%, rgba(232,220,196,.45), transparent 40%),
+      radial-gradient(circle at 95% 100%, rgba(164,194,217,.25), transparent 35%);
+    box-shadow:0 30px 80px rgba(40,30,20,.18);
+    overflow:hidden;
+  }
+
+  /* ─── 표지 ──────────────────────────────── */
+  .cover{
+    position:relative;
+    padding:90px 80px 70px;
+    text-align:center;
+    border-bottom:1px solid var(--rule);
+  }
+  .cover::before,
+  .cover::after{
+    content:"";
+    position:absolute;left:50%;
+    width:60px;height:1px;background:var(--ink);
+    transform:translateX(-50%);
+  }
+  .cover::before{top:60px}
+  .cover::after{bottom:40px}
+
+  .brand-mark{
+    font-family:'Nanum Myeongjo',serif;
+    font-size:90px;line-height:1;
+    color:var(--novel);
+    margin-bottom:14px;
+    font-weight:800;
+  }
+  .brand-name{
+    font-family:'Black Han Sans',sans-serif;
+    font-size:78px;
+    letter-spacing:-2px;
+    color:var(--ink);
+  }
+  .brand-en{
+    font-family:'Nanum Myeongjo',serif;
+    font-style:italic;
+    color:var(--ink-soft);
+    font-size:18px;
+    margin-top:8px;
+    letter-spacing:6px;
+  }
+  .tagline{
+    margin-top:24px;
+    font-family:'Gowun Batang',serif;
+    font-size:20px;
+    color:var(--ink-soft);
+    line-height:1.7;
+  }
+  .open-info{
+    margin-top:30px;
+    display:inline-flex;gap:18px;
+    font-family:'Gowun Dodum',sans-serif;
+    font-size:14px;color:var(--ink-soft);
+    border-top:1px dashed var(--rule);
+    border-bottom:1px dashed var(--rule);
+    padding:10px 24px;
+  }
+  .open-info span:nth-child(2){opacity:.4}
+
+  /* ─── 시그니처 메뉴 ───────────────────────── */
+  .signature{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:0;
+    background:linear-gradient(180deg,var(--paper) 0%,var(--paper-deep) 100%);
+    border-bottom:1px solid var(--rule);
+  }
+  .sig-img-wrap{
+    position:relative;
+    aspect-ratio:1/1;
+    overflow:hidden;
+  }
+  .sig-img-wrap img{
+    width:100%;height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .sig-badge{
+    position:absolute;
+    top:24px;left:24px;
+    background:var(--novel);
+    color:#fff;
+    font-family:'Nanum Myeongjo',serif;
+    font-weight:800;
+    font-size:13px;
+    letter-spacing:4px;
+    padding:8px 16px;
+    border-radius:2px;
+  }
+  .sig-text{
+    padding:70px 60px;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .sig-eyebrow{
+    font-family:'Gowun Dodum',sans-serif;
+    font-size:13px;
+    letter-spacing:6px;
+    color:var(--novel);
+    margin-bottom:18px;
+  }
+  .sig-name{
+    font-family:'Nanum Myeongjo',serif;
+    font-weight:800;
+    font-size:64px;
+    line-height:1.05;
+    color:var(--ink);
+    margin-bottom:6px;
+  }
+  .sig-name-en{
+    font-family:'Nanum Myeongjo',serif;
+    font-style:italic;
+    color:var(--ink-soft);
+    font-size:20px;
+    letter-spacing:4px;
+    margin-bottom:24px;
+  }
+  .sig-desc{
+    font-family:'Gowun Batang',serif;
+    font-size:17px;
+    line-height:1.85;
+    color:var(--ink-soft);
+    margin-bottom:34px;
+  }
+  .sig-price{
+    font-family:'Nanum Myeongjo',serif;
+    font-weight:700;
+    font-size:34px;
+    color:var(--novel);
+    border-top:1px solid var(--rule);
+    padding-top:20px;
+    display:flex;align-items:baseline;gap:8px;
+  }
+  .sig-price small{
+    font-size:14px;color:var(--ink-soft);
+    font-weight:400;letter-spacing:2px;
+    font-family:'Gowun Dodum',sans-serif;
+  }
+
+  /* ─── 셋트 섹션 ──────────────────────────── */
+  .sets{
+    padding:80px 80px 60px;
+    background:var(--paper);
+  }
+  .sets-head{
+    text-align:center;
+    margin-bottom:56px;
+  }
+  .sets-head .label{
+    font-family:'Gowun Dodum',sans-serif;
+    font-size:13px;letter-spacing:8px;
+    color:var(--ink-soft);
+  }
+  .sets-head h2{
+    font-family:'Nanum Myeongjo',serif;
+    font-weight:800;
+    font-size:46px;
+    margin:14px 0 12px;
+    letter-spacing:-1px;
+  }
+  .sets-head p{
+    font-family:'Gowun Batang',serif;
+    color:var(--ink-soft);font-size:16px;
+    line-height:1.7;
+  }
+  .sets-head .divider{
+    width:40px;height:2px;
+    background:var(--ink);
+    margin:24px auto 0;
+  }
+
+  .set-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:28px;
+  }
+
+  .set{
+    border-radius:6px;
+    overflow:hidden;
+    display:flex;flex-direction:column;
+    box-shadow:0 12px 30px rgba(40,30,20,.08);
+    transition:transform .3s;
+  }
+  .set:hover{transform:translateY(-4px)}
+
+  .set-img{
+    aspect-ratio:4/3;
+    overflow:hidden;position:relative;
+  }
+  .set-img img{
+    width:100%;height:100%;
+    object-fit:cover;display:block;
+  }
+  .genre-chip{
+    position:absolute;top:16px;left:16px;
+    padding:6px 14px;
+    border-radius:30px;
+    font-size:12px;letter-spacing:3px;
+    font-weight:700;
+  }
+
+  .set-body{
+    padding:28px 28px 30px;
+    flex:1;
+    display:flex;flex-direction:column;
+  }
+  .set-title{
+    font-size:28px;
+    font-weight:800;
+    margin-bottom:6px;
+    line-height:1.2;
+  }
+  .set-items{
+    font-size:14px;
+    margin-bottom:14px;
+    opacity:.8;
+    letter-spacing:.5px;
+  }
+  .set-story{
+    font-size:14px;
+    line-height:1.85;
+    margin-bottom:20px;
+    flex:1;
+  }
+  .set-price{
+    display:flex;align-items:baseline;
+    justify-content:space-between;
+    border-top:1px dashed currentColor;
+    padding-top:16px;
+    font-weight:700;
+  }
+  .set-price .original{
+    font-size:13px;
+    text-decoration:line-through;
+    opacity:.55;
+    font-weight:400;
+  }
+  .set-price .now{
+    font-size:26px;
+    letter-spacing:-.5px;
+  }
+
+  /* 만화책 — 비비드 옐로우 + Jua */
+  .set.comic{background:var(--comic);color:var(--comic-ink)}
+  .set.comic .set-title,.set.comic .set-items,
+  .set.comic .set-story,.set.comic .set-price{font-family:'Jua',sans-serif}
+  .set.comic .genre-chip{background:var(--comic-ink);color:var(--comic)}
+
+  /* 소설 — 버건디 + Nanum Myeongjo */
+  .set.novel{background:var(--novel);color:var(--novel-ink)}
+  .set.novel .set-title{font-family:'Nanum Myeongjo',serif;font-weight:800}
+  .set.novel .set-items,.set.novel .set-story{
+    font-family:'Gowun Batang',serif;
+  }
+  .set.novel .set-price{font-family:'Nanum Myeongjo',serif}
+  .set.novel .genre-chip{background:#fff;color:var(--novel)}
+  .set.novel .signature-mark{
+    display:inline-block;
+    background:#fff;color:var(--novel);
+    font-size:10px;letter-spacing:3px;
+    padding:3px 8px;
+    margin-left:8px;
+    font-weight:700;
+    font-family:'Gowun Dodum',sans-serif;
+    vertical-align:middle;
+  }
+
+  /* 수필 — 웜베이지 + Gowun Dodum */
+  .set.essay{background:var(--essay);color:var(--essay-ink)}
+  .set.essay .set-title,.set.essay .set-items,
+  .set.essay .set-story,.set.essay .set-price{
+    font-family:'Gowun Dodum',sans-serif;
+  }
+  .set.essay .set-title{font-weight:700}
+  .set.essay .genre-chip{background:var(--essay-deep);color:#fff}
+
+  /* 시 — 미스트블루 + Gowun Batang */
+  .set.poem{background:var(--poem);color:var(--poem-ink)}
+  .set.poem .set-title{font-family:'Gowun Batang',serif;font-weight:700;letter-spacing:-1px}
+  .set.poem .set-items,.set.poem .set-story{
+    font-family:'Gowun Batang',serif;
+    font-weight:400;
+  }
+  .set.poem .set-price{font-family:'Gowun Batang',serif}
+  .set.poem .genre-chip{background:var(--poem-ink);color:#fff}
+
+  /* ─── 전체 메뉴 ──────────────────────────── */
+  .full{
+    padding:80px 80px 60px;
+    background:var(--paper-deep);
+    border-top:1px solid var(--rule);
+  }
+  .full-head{
+    text-align:center;
+    margin-bottom:50px;
+  }
+  .full-head .label{
+    font-family:'Gowun Dodum',sans-serif;
+    font-size:13px;letter-spacing:8px;
+    color:var(--ink-soft);
+  }
+  .full-head h2{
+    font-family:'Nanum Myeongjo',serif;
+    font-weight:800;
+    font-size:46px;
+    margin-top:12px;
+    letter-spacing:-1px;
+  }
+
+  .full-cols{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:50px 70px;
+  }
+  .col h3{
+    font-family:'Nanum Myeongjo',serif;
+    font-weight:800;
+    font-size:22px;
+    letter-spacing:6px;
+    color:var(--ink);
+    border-bottom:2px solid var(--ink);
+    padding-bottom:12px;
+    margin-bottom:18px;
+    display:flex;align-items:center;gap:12px;
+  }
+  .col h3 small{
+    font-family:'Gowun Dodum',sans-serif;
+    font-size:11px;letter-spacing:3px;
+    color:var(--ink-soft);
+    font-weight:400;
+  }
+  .col ul{list-style:none}
+  .col li{
+    display:flex;justify-content:space-between;
+    align-items:flex-end;
+    padding:11px 0;
+    border-bottom:1px dashed var(--rule);
+    font-family:'Gowun Batang',serif;
+    font-size:16px;
+  }
+  .col li .name{display:flex;align-items:baseline;gap:8px}
+  .col li .en{font-size:11px;color:var(--ink-soft);letter-spacing:2px;font-style:italic}
+  .col li .price{
+    font-family:'Nanum Myeongjo',serif;
+    font-weight:700;
+    letter-spacing:.5px;
+  }
+  .col-foot{
+    margin-top:14px;
+    font-family:'Gowun Batang',serif;
+    font-size:12px;
+    color:var(--novel);
+    line-height:1.5;
+    letter-spacing:.3px;
+  }
+
+  /* 콜 그룹별 강조 컬러 */
+  .col.coffee h3{color:#3A2618}
+  .col.noncoffee h3{color:var(--poem-ink)}
+  .col.dessert h3{color:var(--novel)}
+  .col.note{
+    background:#fff;
+    padding:24px 26px;
+    border-radius:4px;
+    box-shadow:0 6px 20px rgba(40,30,20,.06);
+  }
+  .col.note h3{
+    font-size:18px;
+    border-bottom:1px solid var(--rule);
+    color:var(--ink-soft);
+    letter-spacing:4px;
+  }
+  .col.note p{
+    font-family:'Gowun Batang',serif;
+    font-size:14px;line-height:1.85;
+    color:var(--ink-soft);
+  }
+
+  /* ─── 푸터 ──────────────────────────────── */
+  footer{
+    text-align:center;
+    padding:50px 60px 60px;
+    background:var(--paper);
+    border-top:1px solid var(--rule);
+  }
+  .quote{
+    font-family:'Single Day',cursive;
+    font-size:24px;
+    color:var(--novel);
+    margin-bottom:16px;
+    line-height:1.5;
+  }
+  .footer-line{
+    font-family:'Gowun Dodum',sans-serif;
+    font-size:13px;letter-spacing:4px;
+    color:var(--ink-soft);
+  }
+  .footer-line span{margin:0 12px;opacity:.4}
+
+  /* ─── 인쇄 (4페이지 A4) ───────────────────
+     섹션마다 정확히 한 페이지를 채우도록 height:100vh + page-break-after:always.
+     인쇄 시 vw/vh가 페이지 사이즈 기준이라 정확히 맞물림.
+  ────────────────────────────────────────── */
+  @media print{
+    @page{size:A4;margin:0}
+    html,body{
+      background:var(--paper);
+      -webkit-print-color-adjust:exact;
+      print-color-adjust:exact;
+    }
+    body{padding:0;display:block}
+    .menu{
+      width:210mm;
+      box-shadow:none;
+      background:var(--paper);
+    }
+
+    .cover, .signature, .sets{
+      page-break-after:always;
+      break-after:page;
+      height:100vh;
+      box-sizing:border-box;
+      overflow:hidden;
+    }
+    .full-page{
+      page-break-before:always;
+      page-break-after:avoid;
+      box-sizing:border-box;
+    }
+    .full-page > .full{page-break-after:avoid;page-break-inside:avoid}
+    .full-page > footer{page-break-before:avoid;page-break-inside:avoid}
+    .cover{padding:55mm 24mm 0;display:flex;flex-direction:column;align-items:center}
+
+    /* 시그니처: 위에 이미지 / 아래에 텍스트 */
+    .signature{display:flex;flex-direction:column}
+    .sig-img-wrap{flex:0 0 140mm;width:100%;aspect-ratio:auto}
+    .sig-text{flex:1;padding:14mm 30mm;text-align:center;justify-content:center}
+    .sig-eyebrow{margin-bottom:10px}
+    .sig-name{font-size:54px}
+    .sig-name-en{font-size:16px;margin-bottom:16mm}
+    .sig-desc{font-size:14px;line-height:1.95;margin-bottom:14mm}
+    .sig-price{justify-content:center;border:none;padding-top:0;font-size:28px}
+
+    /* 셋트: 한 페이지에 4개 카드 */
+    .sets{padding:14mm 14mm 8mm;display:flex;flex-direction:column}
+    .sets-head{margin-bottom:6mm;flex:0 0 auto}
+    .sets-head h2{font-size:28px;margin:6px 0 4px}
+    .sets-head p{font-size:12px}
+    .sets-head .divider{margin-top:10px;width:32px}
+    .set-grid{flex:1;gap:6mm}
+    .set{box-shadow:none;display:flex;flex-direction:column}
+    .set-img{aspect-ratio:auto;flex:0 0 38mm;height:38mm}
+    .set-body{padding:10px 14px 12px;flex:1}
+    .set-title{font-size:16px;margin-bottom:3px}
+    .set-items{font-size:10.5px;margin-bottom:6px}
+    .set-story{font-size:10.5px;line-height:1.6;margin-bottom:8px}
+    .set-price{padding-top:6px}
+    .set-price .original{font-size:10px}
+    .set-price .now{font-size:16px}
+    .set.novel .signature-mark{font-size:7px;padding:2px 5px}
+
+    /* 전체 메뉴 페이지: full + footer 합쳐 한 장 */
+    .full{padding:14mm 22mm 6mm;page-break-after:avoid}
+    .full-head{margin-bottom:6mm}
+    .full-head .label{font-size:10px;letter-spacing:5px}
+    .full-head h2{font-size:28px;margin-top:4px}
+    .full-cols{display:grid;grid-template-columns:1fr 1fr;gap:5mm 14mm;grid-auto-rows:min-content}
+    .col{margin-bottom:0}
+    .col h3{font-size:15px;padding-bottom:5px;margin-bottom:6px;letter-spacing:3px}
+    .col h3 small{font-size:9px;letter-spacing:2px}
+    .col li{padding:4px 0;font-size:12.5px}
+    .col li .en{font-size:9px}
+    .col-foot{font-size:10.5px;margin-top:8px}
+    .col.note{padding:10px 14px;margin-bottom:0}
+    .col.note h3{font-size:12px;margin-bottom:4px;letter-spacing:2px}
+    .col.note p{font-size:10px;line-height:1.6}
+
+    footer{padding:5mm 20mm 8mm}
+    .quote{font-size:14px;margin-bottom:6px}
+    .footer-line{font-size:10px;letter-spacing:3px}
+    .set:hover{transform:none}
+  }
+</style>
+</head>
+<body>
+  <main class="menu">
+
+    <!-- ═══ 표지 ═══ -->
+    <section class="cover">
+      <div class="brand-mark">,</div>
+      <h1 class="brand-name">쉼표책방</h1>
+      <div class="brand-en">SHIMPYO BOOK CAFE</div>
+      <p class="tagline">
+        한 페이지에서 잠시 머물다.<br>
+        만화책과 소설, 수필과 시가 나란히 놓인 책방 카페.
+      </p>
+      <div class="open-info">
+        <span>OPEN 11:00 — 22:00</span>
+        <span>·</span>
+        <span>CLOSED on MONDAY</span>
+      </div>
+    </section>
+
+    <!-- ═══ 시그니처 ═══ -->
+    <section class="signature">
+      <div class="sig-img-wrap">
+        <img src="https://ik.imagekit.io/3um8y0hge/cafe-menu/signature_einspanner.jpg?tr=w-900,h-900,fo-auto" alt="아인슈페너">
+        <div class="sig-badge">SIGNATURE</div>
+      </div>
+      <div class="sig-text">
+        <div class="sig-eyebrow">대표 메뉴</div>
+        <h2 class="sig-name">아인슈페너</h2>
+        <div class="sig-name-en">EINSPÄNNER</div>
+        <p class="sig-desc">
+          묵직한 크림 아래로 천천히 흐르는<br>
+          진한 에스프레소 한 잔.<br>
+          긴 호흡으로 페이지를 넘기는<br>
+          오후의 시간을 닮았습니다.
+        </p>
+        <div class="sig-price">6,500<small>원 KRW</small></div>
+      </div>
+    </section>
+
+    <!-- ═══ 셋트 메뉴 ═══ -->
+    <section class="sets">
+      <div class="sets-head">
+        <div class="label">SET MENU</div>
+        <h2>장르별 셋트 메뉴</h2>
+        <p>오늘 펼친 책의 결에 따라, 어울리는 한 잔과 한 입을 함께 묶었습니다.</p>
+        <div class="divider"></div>
+      </div>
+
+      <div class="set-grid">
+
+        <!-- 만화책 -->
+        <article class="set comic">
+          <div class="set-img">
+            <img src="https://ik.imagekit.io/3um8y0hge/cafe-menu/set_comic.jpg?tr=w-700,h-525,fo-auto" alt="만화책 셋트">
+            <span class="genre-chip">COMIC</span>
+          </div>
+          <div class="set-body">
+            <h3 class="set-title">한 컷의 행복</h3>
+            <p class="set-items">카라멜라떼 + 마카롱 1pc</p>
+            <p class="set-story">
+              손바닥만 한 마카롱과 달큰한 카라멜이 흐르는 라떼 한 잔. 만화책의 한 컷처럼, 작고 또렷한 즐거움이 톡 하고 입가에 번지는 셋트.
+            </p>
+            <div class="set-price">
+              <span class="original">8,800원</span>
+              <span class="now">7,900원</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- 소설 -->
+        <article class="set novel">
+          <div class="set-img">
+            <img src="https://ik.imagekit.io/3um8y0hge/cafe-menu/set_novel.jpg?tr=w-700,h-525,fo-auto" alt="소설 셋트">
+            <span class="genre-chip">NOVEL</span>
+          </div>
+          <div class="set-body">
+            <h3 class="set-title">긴 호흡, 한 모금<span class="signature-mark">SIGNATURE</span></h3>
+            <p class="set-items">아인슈페너 + 치즈케익</p>
+            <p class="set-story">
+              두툼한 크림 아래 깊이 가라앉은 에스프레소, 한 입의 부드러운 치즈케익. 페이지를 천천히 넘기는 긴 호흡과 닮은, 책방의 대표 셋트.
+            </p>
+            <div class="set-price">
+              <span class="original">11,000원</span>
+              <span class="now">9,900원</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- 수필 -->
+        <article class="set essay">
+          <div class="set-img">
+            <img src="https://ik.imagekit.io/3um8y0hge/cafe-menu/set_essay.jpg?tr=w-700,h-525,fo-auto" alt="수필 셋트">
+            <span class="genre-chip">ESSAY</span>
+          </div>
+          <div class="set-body">
+            <h3 class="set-title">오늘의 한 줄</h3>
+            <p class="set-items">라떼 + 베이글</p>
+            <p class="set-story">
+              따뜻한 라떼 한 잔과 든든한 베이글 한 조각. 일상의 한 줄을 천천히 적어 내려가는 시간처럼, 고요하고 단단한 셋트.
+            </p>
+            <div class="set-price">
+              <span class="original">8,900원</span>
+              <span class="now">7,900원</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- 시 -->
+        <article class="set poem">
+          <div class="set-img">
+            <img src="https://ik.imagekit.io/3um8y0hge/cafe-menu/set_poem.jpg?tr=w-700,h-525,fo-auto" alt="시 셋트">
+            <span class="genre-chip">POEM</span>
+          </div>
+          <div class="set-body">
+            <h3 class="set-title">행간의 청량함</h3>
+            <p class="set-items">청포도쥬스 + 샌드위치</p>
+            <p class="set-story">
+              청포도의 시린 단맛과 가벼운 샌드위치 한 조각. 시의 행간처럼, 가볍게 머물다 다음 줄로 옮겨가는 한 끼.
+            </p>
+            <div class="set-price">
+              <span class="original">10,000원</span>
+              <span class="now">8,900원</span>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ═══ 전체 메뉴 + 푸터 (인쇄 시 1페이지) ═══ -->
+    <div class="full-page">
+    <section class="full">
+      <div class="full-head">
+        <div class="label">FULL MENU</div>
+        <h2>전체 메뉴</h2>
+      </div>
+
+      <div class="full-cols">
+
+        <div class="col coffee">
+          <h3>COFFEE <small>커피</small></h3>
+          <ul>
+            <li><span class="name">아메리카노 <span class="en">Americano</span></span><span class="price">4,000</span></li>
+            <li><span class="name">라떼 <span class="en">Cafe Latte</span></span><span class="price">5,000</span></li>
+            <li><span class="name">바닐라라떼 <span class="en">Vanilla Latte</span></span><span class="price">5,500</span></li>
+            <li><span class="name">카라멜라떼 <span class="en">Caramel Latte</span></span><span class="price">5,500</span></li>
+            <li><span class="name">카푸치노 <span class="en">Cappuccino</span></span><span class="price">5,500</span></li>
+          </ul>
+          <p class="col-foot">★ 아인슈페너는 시그니처 페이지를 참고해 주세요.</p>
+        </div>
+
+        <div class="col noncoffee">
+          <h3>NON-COFFEE <small>논커피</small></h3>
+          <ul>
+            <li><span class="name">청포도쥬스 <span class="en">Green Grape</span></span><span class="price">6,000</span></li>
+            <li><span class="name">딸기바나나 <span class="en">Strawberry Banana</span></span><span class="price">6,500</span></li>
+            <li><span class="name">아보카도바나나 <span class="en">Avocado Banana</span></span><span class="price">6,500</span></li>
+            <li><span class="name">복숭아자두쥬스 <span class="en">Peach Plum</span></span><span class="price">6,000</span></li>
+            <li><span class="name">수박쥬스 <span class="en">Watermelon</span></span><span class="price">6,000</span></li>
+          </ul>
+        </div>
+
+        <div class="col dessert">
+          <h3>DESSERT <small>디저트</small></h3>
+          <ul>
+            <li><span class="name">치즈케익 <span class="en">Cheesecake</span></span><span class="price">4,500</span></li>
+            <li><span class="name">베이글 <span class="en">Bagel</span></span><span class="price">3,900</span></li>
+            <li><span class="name">샌드위치 <span class="en">Sandwich</span></span><span class="price">4,000</span></li>
+            <li><span class="name">마카롱 <span class="en">Macaron</span></span><span class="price">3,300</span></li>
+          </ul>
+        </div>
+
+        <div class="col note">
+          <h3>NOTE</h3>
+          <p>
+            모든 셋트는 음료의 사이즈 업(+500원)이 가능합니다.<br>
+            디저트는 매일 아침 10시, 가게에서 직접 굽거나 들여옵니다.<br>
+            <br>
+            책은 자유롭게 읽으실 수 있어요.<br>
+            다 읽으신 후엔 책장 위 ‘쉼표 자리’에 놓아 두세요.
+          </p>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ═══ 푸터 ═══ -->
+    <footer class="full-footer">
+      <p class="quote">"문장과 문장 사이, 짧게 머무는 시간."</p>
+      <p class="footer-line">
+        <span>·</span>쉼표책방<span>·</span>SHIMPYO BOOK CAFE<span>·</span>
+      </p>
+    </footer>
+    </div>
+
+  </main>
+</body>
+</html>
