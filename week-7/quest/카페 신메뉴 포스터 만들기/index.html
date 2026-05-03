@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080, initial-scale=1">
+<title>쉼표책방 · 신메뉴 더블 에스프레소 라떼</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Gowun+Batang:wght@400;700&family=Hahmlet:wght@200;300;400;500;600;700;800;900&family=Single+Day&family=Stylish&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+
+  :root{
+    --paper:#F5EBD9;
+    --ink:#1A100A;
+    --ink-mid:#3A2418;
+    --cream:#F5EBD9;
+    --honey:#D4A574;
+    --hot:#E8703D;
+    --cool:#9DBFD4;       /* ICE 액센트 컬러 */
+    --rule:rgba(245,235,217,.18);
+  }
+
+  html,body{
+    background:#1A1612;
+    font-family:'Pretendard',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    color:var(--ink);
+  }
+  body{
+    display:flex;justify-content:center;
+    padding:40px 0;
+  }
+
+  /* ─── 포스터 1080×1350 ─── */
+  .poster{
+    width:1080px;
+    height:1350px;
+    background:var(--ink);
+    position:relative;
+    overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.5);
+    display:flex;
+    flex-direction:column;
+  }
+
+  /* ─── HERO: HOT + ICE 분할 (650px = 약 48%) ─── */
+  .hero{
+    position:relative;
+    flex:0 0 700px;
+    width:100%;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+
+  .hero-half{
+    position:relative;
+    overflow:hidden;
+  }
+  .hero-half img{
+    width:100%;height:100%;
+    object-fit:cover;
+    display:block;
+  }
+  .hero-half::after{
+    content:"";
+    position:absolute;inset:0;
+    pointer-events:none;
+  }
+  .hero-half.hot::after{
+    background:
+      linear-gradient(180deg, rgba(26,16,10,.6) 0%, rgba(26,16,10,.05) 25%, rgba(26,16,10,0) 60%, rgba(26,16,10,.55) 100%),
+      linear-gradient(90deg, rgba(232,112,61,.05) 0%, transparent 60%);
+  }
+  .hero-half.ice::after{
+    background:
+      linear-gradient(180deg, rgba(26,16,10,.6) 0%, rgba(26,16,10,.05) 25%, rgba(26,16,10,0) 60%, rgba(26,16,10,.55) 100%),
+      linear-gradient(270deg, rgba(157,191,212,.07) 0%, transparent 60%);
+  }
+
+  /* HOT/ICE 큰 타입 라벨 */
+  .type-mark{
+    position:absolute;
+    bottom:26px;left:0;right:0;
+    text-align:center;
+    z-index:3;
+    color:var(--cream);
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-weight:200;
+    font-size:96px;
+    line-height:1;
+    letter-spacing:6px;
+    text-shadow:0 4px 24px rgba(0,0,0,.4);
+    pointer-events:none;
+  }
+  .type-mark small{
+    display:block;
+    font-style:normal;
+    font-weight:500;
+    font-size:11px;
+    letter-spacing:8px;
+    margin-top:14px;
+    opacity:.85;
+    color:var(--cream);
+    font-family:'Pretendard',sans-serif;
+  }
+  .hero-half.hot .type-mark{
+    color:#FFE3CC;
+  }
+  .hero-half.ice .type-mark{
+    color:#E1F0FA;
+  }
+
+  /* 중앙 분리선 + 작은 도트 */
+  .splitter{
+    position:absolute;
+    top:0;bottom:0;
+    left:50%;
+    width:1px;
+    background:rgba(245,235,217,.35);
+    z-index:4;
+  }
+  .splitter::before,
+  .splitter::after{
+    content:"";
+    position:absolute;
+    left:50%;
+    width:9px;height:9px;
+    border-radius:50%;
+    background:var(--cream);
+    transform:translateX(-50%);
+  }
+  .splitter::before{top:38px}
+  .splitter::after{bottom:38px}
+
+  /* 상단 배지 (포스터 전체 좌우) */
+  .top-bar{
+    position:absolute;top:34px;left:0;right:0;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:0 56px;
+    z-index:5;
+    color:var(--cream);
+  }
+  .winter-badge{
+    display:inline-flex;align-items:center;gap:14px;
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-size:17px;
+    letter-spacing:6px;
+    font-weight:300;
+  }
+  .winter-badge::before{
+    content:"";
+    width:32px;height:1px;
+    background:var(--cream);
+    display:inline-block;
+  }
+  .brand-mini{
+    font-family:'Hahmlet',serif;
+    font-weight:700;
+    font-size:18px;
+    letter-spacing:1px;
+    text-align:right;
+  }
+  .brand-mini small{
+    display:block;
+    font-weight:300;
+    font-size:10px;
+    letter-spacing:5px;
+    margin-top:4px;
+    opacity:.75;
+  }
+
+  /* NEW 스탬프 (가운데 살짝 위) */
+  .new-stamp{
+    position:absolute;
+    top:34%;left:50%;
+    transform:translate(-50%,-50%) rotate(-8deg);
+    width:140px;height:140px;
+    border:1.5px solid var(--cream);
+    border-radius:50%;
+    display:flex;flex-direction:column;
+    justify-content:center;align-items:center;
+    color:var(--cream);
+    z-index:6;
+    background:rgba(26,16,10,.4);
+    backdrop-filter:blur(2px);
+  }
+  .new-stamp::before{
+    content:"";
+    position:absolute;inset:6px;
+    border:1px solid var(--cream);
+    border-radius:50%;
+    opacity:.45;
+  }
+  .new-stamp .new{
+    font-family:'Black Han Sans',sans-serif;
+    font-size:38px;
+    letter-spacing:2px;
+    line-height:.9;
+  }
+  .new-stamp .menu{
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-size:10px;
+    letter-spacing:5px;
+    margin-top:5px;
+  }
+
+  /* ─── INFO 영역 ─── */
+  .info{
+    flex:1;
+    background:var(--ink);
+    color:var(--cream);
+    padding:48px 70px 28px;
+    display:flex;flex-direction:column;
+    position:relative;
+  }
+
+  /* 상단 메타 라인 */
+  .info-meta{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:30px;
+  }
+  .info-meta .left{
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-size:60px;
+    line-height:1;
+    font-weight:200;
+    letter-spacing:-2px;
+    color:var(--cream);
+  }
+  .info-meta .left small{
+    display:block;
+    font-style:normal;
+    font-weight:400;
+    font-size:11px;
+    letter-spacing:6px;
+    margin-top:6px;
+    opacity:.8;
+  }
+  .info-meta .right{
+    text-align:right;
+  }
+  .info-meta .right .label{
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-weight:300;
+    font-size:13px;
+    letter-spacing:5px;
+    color:var(--honey);
+    margin-bottom:6px;
+  }
+  .info-meta .right .available{
+    font-family:'Pretendard',sans-serif;
+    font-weight:700;
+    font-size:14px;
+    letter-spacing:3px;
+    color:var(--cream);
+  }
+  .info-meta .right .available span{
+    margin:0 8px;
+    color:var(--honey);
+  }
+
+  /* 메인 카피 */
+  .headline{
+    font-family:'Hahmlet',serif;
+    font-weight:300;
+    font-size:42px;
+    line-height:1.4;
+    letter-spacing:-1.5px;
+    color:var(--cream);
+    margin-bottom:28px;
+  }
+  .headline .pause{
+    color:var(--honey);
+    font-weight:600;
+    font-style:italic;
+    font-size:48px;
+  }
+  .headline em{
+    font-style:italic;
+    font-weight:500;
+    color:var(--honey);
+    font-size:46px;
+  }
+
+  /* 신메뉴명 + 가격 */
+  .product-row{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:30px;
+    border-top:1px solid var(--rule);
+    padding-top:28px;
+    margin-bottom:22px;
+  }
+  .product{
+    display:flex;flex-direction:column;
+  }
+  .product-en{
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-weight:300;
+    font-size:13px;
+    letter-spacing:5px;
+    color:var(--honey);
+    margin-bottom:10px;
+  }
+  .product-name{
+    font-family:'Pretendard',sans-serif;
+    font-weight:900;
+    font-size:54px;
+    letter-spacing:-2.5px;
+    line-height:1;
+    color:var(--cream);
+  }
+  .price{
+    text-align:right;
+    flex-shrink:0;
+  }
+  .price .num{
+    font-family:'Hahmlet',serif;
+    font-weight:700;
+    font-size:56px;
+    line-height:1;
+    color:var(--cream);
+    letter-spacing:-1px;
+  }
+  .price .won{
+    font-family:'Pretendard',sans-serif;
+    font-weight:500;
+    font-size:18px;
+    margin-left:2px;
+    opacity:.85;
+  }
+
+  /* 보조 카피 */
+  .sub{
+    font-family:'Hahmlet',serif;
+    font-weight:300;
+    font-size:16px;
+    line-height:1.7;
+    color:rgba(245,235,217,.78);
+    letter-spacing:.5px;
+    margin-bottom:22px;
+  }
+  .sub em{
+    font-style:normal;
+    color:var(--honey);
+    font-weight:500;
+  }
+
+  /* ─── 해피아워 STRIP (포스터 바닥, 풀폭) ─── */
+  .happy-strip{
+    flex:0 0 auto;
+    background:var(--honey);
+    color:var(--ink);
+    height:96px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:30px;
+    position:relative;
+    overflow:hidden;
+    box-shadow:inset 0 1px 0 rgba(0,0,0,.05), inset 0 -1px 0 rgba(0,0,0,.05);
+  }
+  .happy-strip::before,
+  .happy-strip::after{
+    content:"";
+    position:absolute;
+    top:50%;
+    width:60px;height:60px;
+    border-radius:50%;
+    background:var(--ink);
+    transform:translateY(-50%);
+  }
+  .happy-strip::before{left:-30px}
+  .happy-strip::after{right:-30px}
+
+  .strip-tag{
+    font-family:'Black Han Sans',sans-serif;
+    font-size:34px;
+    letter-spacing:-1px;
+    line-height:1;
+    color:var(--ink);
+  }
+  .strip-divider{
+    width:8px;height:8px;
+    border-radius:50%;
+    background:var(--ink);
+  }
+  .strip-time{
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-weight:700;
+    font-size:38px;
+    line-height:1;
+    color:var(--ink);
+    letter-spacing:-1px;
+  }
+  .strip-time small{
+    font-family:'Pretendard',sans-serif;
+    font-style:normal;
+    font-weight:600;
+    font-size:12px;
+    letter-spacing:4px;
+    margin-left:8px;
+    opacity:.7;
+    vertical-align:middle;
+  }
+  .strip-off{
+    font-family:'Black Han Sans',sans-serif;
+    font-size:42px;
+    line-height:1;
+    color:var(--ink);
+    letter-spacing:-1px;
+    background:var(--ink);
+    color:var(--honey);
+    padding:10px 22px;
+    transform:rotate(-3deg);
+    box-shadow:0 4px 0 rgba(0,0,0,.18);
+  }
+  .strip-off small{
+    font-family:'Pretendard',sans-serif;
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:2px;
+    margin-left:4px;
+    opacity:.85;
+  }
+
+  /* 미니 화살표/장식 */
+  .strip-arrow{
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-weight:700;
+    font-size:22px;
+    color:var(--ink);
+    letter-spacing:1px;
+  }
+
+  /* ─── 인쇄 ─── */
+  @media print{
+    @page{size:A4;margin:0}
+    html,body{
+      background:#fff;
+      -webkit-print-color-adjust:exact;
+      print-color-adjust:exact;
+    }
+    body{padding:0;display:block}
+    .poster{
+      width:210mm;
+      height:297mm;
+      box-shadow:none;
+    }
+    .hero{flex:0 0 50%}
+    .info{padding:34px 50px 40px}
+  }
+</style>
+</head>
+<body>
+  <div class="poster">
+
+    <!-- ════ 상단 배지 (포스터 좌우 끝) ════ -->
+    <div class="top-bar">
+      <span class="winter-badge">WINTER LIMITED 2026</span>
+      <span class="brand-mini">,쉼표책방<small>SHIMPYO BOOK CAFE</small></span>
+    </div>
+
+    <!-- ════ HERO 분할: HOT | ICE ════ -->
+    <div class="hero">
+      <div class="hero-half hot">
+        <img src="https://ik.imagekit.io/3um8y0hge/cafe-poster/hero_double_espresso.jpg?tr=w-700,h-900,fo-auto" alt="HOT 더블 에스프레소 라떼">
+        <div class="type-mark">HOT<small>WARM &amp; DEEP</small></div>
+      </div>
+      <div class="hero-half ice">
+        <img src="https://ik.imagekit.io/3um8y0hge/cafe-poster/hero_ice_double_espresso.jpg?tr=w-700,h-900,fo-auto" alt="ICE 더블 에스프레소 라떼">
+        <div class="type-mark">ICE<small>COOL &amp; CRISP</small></div>
+      </div>
+
+      <!-- 중앙 분리선 -->
+      <div class="splitter"></div>
+
+      <!-- NEW 스탬프 (가운데) -->
+      <div class="new-stamp">
+        <span class="new">NEW</span>
+        <span class="menu">SIGNATURE MENU</span>
+      </div>
+    </div>
+
+    <!-- ════ INFO 영역 ════ -->
+    <div class="info">
+
+      <div class="info-meta">
+        <div class="left">N°03<small>BEST SELLER</small></div>
+        <div class="right">
+          <div class="label">SERVED EITHER WAY</div>
+          <div class="available">HOT <span>·</span> ICE</div>
+        </div>
+      </div>
+
+      <p class="headline">
+        한 모금의 침묵<span class="pause">,</span><br>
+        하루의 가장 깊은 <em>쉼표.</em>
+      </p>
+
+      <div class="product-row">
+        <div class="product">
+          <span class="product-en">DOUBLE ESPRESSO LATTE</span>
+          <h1 class="product-name">더블 에스프레소 라떼</h1>
+        </div>
+        <div class="price">
+          <span class="num">6,800</span><span class="won">원</span>
+        </div>
+      </div>
+
+      <p class="sub">
+        진하고 달콤하고 부드러운 —
+        커피향에 스미는, <em>나만의 감성을 마신다.</em>
+      </p>
+
+    </div>
+
+    <!-- ════ 해피아워 풀폭 띠 ════ -->
+    <div class="happy-strip">
+      <span class="strip-tag">HAPPY HOUR</span>
+      <span class="strip-divider"></span>
+      <span class="strip-time">PM 2:00 — 4:00<small>ONLY</small></span>
+      <span class="strip-arrow">▸</span>
+      <span class="strip-off">-500<small>원</small></span>
+    </div>
+
+  </div>
+</body>
+</html>
