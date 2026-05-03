@@ -45,10 +45,10 @@
     flex-direction:column;
   }
 
-  /* ─── HERO: HOT + ICE 분할 (650px = 약 48%) ─── */
+  /* ─── HERO: HOT + ICE 분할 ─── */
   .hero{
     position:relative;
-    flex:0 0 700px;
+    flex:0 0 660px;
     width:100%;
     display:grid;
     grid-template-columns:1fr 1fr;
@@ -214,7 +214,7 @@
     flex:1;
     background:var(--ink);
     color:var(--cream);
-    padding:48px 70px 28px;
+    padding:42px 70px 24px;
     display:flex;flex-direction:column;
     position:relative;
   }
@@ -362,7 +362,7 @@
     flex:0 0 auto;
     background:var(--honey);
     color:var(--ink);
-    height:96px;
+    height:88px;
     display:flex;
     align-items:center;
     justify-content:center;
@@ -444,6 +444,35 @@
     font-size:22px;
     color:var(--ink);
     letter-spacing:1px;
+  }
+
+  /* ─── 하단 안전 여백 + 미니 푸터 ─── */
+  .bottom-safe{
+    flex:0 0 auto;
+    background:var(--ink);
+    color:rgba(245,235,217,.55);
+    padding:22px 70px 26px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-top:1px solid rgba(245,235,217,.06);
+  }
+  .bottom-safe .left{
+    font-family:'Hahmlet',serif;
+    font-style:italic;
+    font-weight:300;
+    font-size:12px;
+    letter-spacing:5px;
+  }
+  .bottom-safe .right{
+    font-family:'Pretendard',sans-serif;
+    font-weight:600;
+    font-size:11px;
+    letter-spacing:6px;
+  }
+  .bottom-safe .right span{
+    margin:0 10px;
+    opacity:.45;
   }
 
   /* ─── 인쇄 ─── */
@@ -535,6 +564,12 @@
       <span class="strip-time">PM 2:00 — 4:00<small>ONLY</small></span>
       <span class="strip-arrow">▸</span>
       <span class="strip-off">-500<small>원</small></span>
+    </div>
+
+    <!-- ════ 안전 여백 + 미니 푸터 ════ -->
+    <div class="bottom-safe">
+      <span class="left">A pause in every page.</span>
+      <span class="right">,쉼표책방<span>·</span>2026</span>
     </div>
 
   </div>
