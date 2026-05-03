@@ -48,17 +48,22 @@
   /* ─── HERO: HOT + ICE 분할 ─── */
   .hero{
     position:relative;
-    flex:0 0 660px;
+    flex:0 0 620px;
+    height:620px;
     width:100%;
     display:grid;
     grid-template-columns:1fr 1fr;
+    overflow:hidden;
   }
 
   .hero-half{
     position:relative;
     overflow:hidden;
+    height:620px;
   }
   .hero-half img{
+    position:absolute;
+    inset:0;
     width:100%;height:100%;
     object-fit:cover;
     display:block;
@@ -446,28 +451,28 @@
     letter-spacing:1px;
   }
 
-  /* ─── 하단 안전 여백 + 미니 푸터 ─── */
+  /* ─── 하단 안전 여백 + 미니 푸터 (확장) ─── */
   .bottom-safe{
     flex:0 0 auto;
     background:var(--ink);
     color:rgba(245,235,217,.55);
-    padding:22px 70px 26px;
+    padding:34px 70px 50px;
     display:flex;
     justify-content:space-between;
     align-items:center;
-    border-top:1px solid rgba(245,235,217,.06);
+    border-top:1px solid rgba(245,235,217,.08);
   }
   .bottom-safe .left{
     font-family:'Hahmlet',serif;
     font-style:italic;
     font-weight:300;
-    font-size:12px;
+    font-size:13px;
     letter-spacing:5px;
   }
   .bottom-safe .right{
     font-family:'Pretendard',sans-serif;
     font-weight:600;
-    font-size:11px;
+    font-size:12px;
     letter-spacing:6px;
   }
   .bottom-safe .right span{
@@ -475,22 +480,20 @@
     opacity:.45;
   }
 
-  /* ─── 인쇄 ─── */
+  /* ─── 인쇄 (A4) ─────────────────────────────
+     포스터 디자인(1080×1350)을 그대로 두고
+     Chrome PDF 엔진이 자동으로 A4에 맞춰 축소하도록 두면
+     모든 영역이 잘림 없이 안전하게 들어갑니다.
+  ─────────────────────────────────────────── */
   @media print{
     @page{size:A4;margin:0}
     html,body{
-      background:#fff;
+      background:#1A1612;
       -webkit-print-color-adjust:exact;
       print-color-adjust:exact;
     }
     body{padding:0;display:block}
-    .poster{
-      width:210mm;
-      height:297mm;
-      box-shadow:none;
-    }
-    .hero{flex:0 0 50%}
-    .info{padding:34px 50px 40px}
+    .poster{box-shadow:none}
   }
 </style>
 </head>
@@ -506,11 +509,11 @@
     <!-- ════ HERO 분할: HOT | ICE ════ -->
     <div class="hero">
       <div class="hero-half hot">
-        <img src="https://ik.imagekit.io/3um8y0hge/cafe-poster/hero_double_espresso.jpg?tr=w-700,h-900,fo-auto" alt="HOT 더블 에스프레소 라떼">
+        <img src="images/hot.jpg" alt="HOT 더블 에스프레소 라떼">
         <div class="type-mark">HOT<small>WARM &amp; DEEP</small></div>
       </div>
       <div class="hero-half ice">
-        <img src="https://ik.imagekit.io/3um8y0hge/cafe-poster/hero_ice_double_espresso.jpg?tr=w-700,h-900,fo-auto" alt="ICE 더블 에스프레소 라떼">
+        <img src="images/ice.jpg" alt="ICE 더블 에스프레소 라떼">
         <div class="type-mark">ICE<small>COOL &amp; CRISP</small></div>
       </div>
 
