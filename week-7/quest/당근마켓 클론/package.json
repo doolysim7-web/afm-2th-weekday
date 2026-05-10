@@ -1,0 +1,24 @@
+{
+  "name": "carrot-market-clone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "당근마켓 클론 (Express 5 + Supabase Postgres + ImageKit + JWT)",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node seed.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^5.0.1",
+    "imagekit": "^5.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  }
+}
