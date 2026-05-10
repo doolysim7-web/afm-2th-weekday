@@ -12,7 +12,13 @@ async function api(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(path, { ...opts, headers });
+  let res;
+  try {
+    res = await fetch(path, { ...opts, headers });
+  } catch (e) {
+    if (e.name === 'AbortError') throw e;
+    throw new Error('네트워크 오류');
+  }
   let body = null;
   try { body = await res.json(); } catch { /* ignore */ }
   if (!res.ok || !body || body.success === false) {
@@ -559,26 +565,41 @@ function ProductDetailPage({ id }) {
 
   useEffect(() => {
     if (!p || !user) return;
+    // 권한 없는 경우 호출조차 안 함 (서버 403 노이즈 방지)
     if (!(p.is_owner || p.can_modify)) { setProductRooms([]); return; }
-    let alive = true;
+    const ctrl = new AbortController();
     (async () => {
       try {
-        const rooms = await api(`/api/products/${id}/rooms`);
-        if (alive) setProductRooms(rooms);
-      } catch { /* swallow */ }
+        const rooms = await api(`/api/products/${id}/rooms`, { signal: ctrl.signal });
+        if (!ctrl.signal.aborted) setProductRooms(rooms);
+      } catch (e) {
+        if (e.name === 'AbortError') return; // 정상 cleanup, 무시
+        // 그 외(네트워크 등) 도 패널만 비우고 조용히 종료
+      }
     })();
-    return () => { alive = false; };
+    return () => ctrl.abort();
   }, [p, user, id]);
 
   const toggleFav = async () => {
     if (!user) { navigate('/login'); return; }
+    if (favBusy) return;
+    // 낙관적 업데이트 — 서버 응답을 기다리지 않고 즉시 UI 반영해 재렌더 race 방지
+    const prev = p;
+    const next = {
+      ...p,
+      is_favorite: !p.is_favorite,
+      favorite_count: Math.max(0, (p.favorite_count || 0) + (p.is_favorite ? -1 : 1)),
+    };
+    setP(next);
     setFavBusy(true);
     try {
-      if (p.is_favorite) await api(`/api/products/${id}/favorite`, { method: 'DELETE' });
+      if (prev.is_favorite) await api(`/api/products/${id}/favorite`, { method: 'DELETE' });
       else await api(`/api/products/${id}/favorite`, { method: 'POST' });
-      await load();
-    } catch (e) { setErr(e.message); }
-    finally { setFavBusy(false); }
+    } catch (e) {
+      // 실패 시 롤백
+      setP(prev);
+      setErr(e.message);
+    } finally { setFavBusy(false); }
   };
 
   const startChat = async () => {
@@ -1029,12 +1050,26 @@ function ChatRoomPage({ id }) {
       </div>
       <form onSubmit={send} className="bg-white border-t border-gray-200 px-3 py-2 flex gap-2">
         <input
-          value={text} onChange={(e) => setText(e.target.value)}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            // 한글 IME 조합 중 Enter는 무시, 조합 끝난 Enter만 전송
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              if (!busy && text.trim()) send(e);
+            }
+          }}
           maxLength={1000}
           placeholder="메시지 입력"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          inputMode="text"
+          lang="ko"
           className="flex-1 h-11 px-4 rounded-full bg-gray-100 focus:outline-none focus:ring-2 focus:ring-carrot-400"
         />
-        <button disabled={busy || !text.trim()} className="px-4 h-11 rounded-full bg-carrot-500 text-white font-semibold disabled:opacity-50">전송</button>
+        <button type="submit" disabled={busy || !text.trim()} className="px-4 h-11 rounded-full bg-carrot-500 text-white font-semibold disabled:opacity-50">전송</button>
       </form>
     </div>
   );

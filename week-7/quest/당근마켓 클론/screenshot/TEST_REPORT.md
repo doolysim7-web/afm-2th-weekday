@@ -50,7 +50,25 @@
 
 ---
 
-## ⚠️ 발견된 이슈 (3건 — 모두 자동화 한계로, 실사용자 영향 없음 또는 우회 적용)
+## 🛠️ 이슈 수정 완료 (3건 모두 코드 패치 + 재검증)
+
+| # | 코드 변경 | 효과 | 검증 캡처 |
+|---|---|---|---|
+| 1 | 채팅 input에 `autoComplete/autoCorrect/autoCapitalize/spellCheck=false`, `lang="ko"`, `inputMode="text"` + `onKeyDown` IME-safe Enter 핸들러 (`isComposing` 체크) | Enter 단독 전송 보장, 한글+공백+숫자+문장부호 모두 보존 (`좋아요! 11번 출구 6시쯤 가능할까요?` 그대로 송신) | `21-fix-issue1-enter-send.png` |
+| 2 | `toggleFav`를 낙관적 업데이트로 전환(서버 응답 전 `setP({...is_favorite, favorite_count})` 즉시 반영, 실패 시 롤백) + `favBusy` 가드 추가 | 관심 토글 직후 "채팅하기" 연속 클릭이 1회로 동작 → `#/rooms/7` 정상 진입 | `22-fix-issue2-fav-then-chat.png` |
+| 3 | ProductDetailPage의 productRooms `useEffect`에 `AbortController` 적용 + `api()`가 `signal`/AbortError를 인식하도록 확장 | 5개 상세 페이지를 80ms 간격으로 빠르게 전환해도 콘솔 403 0건 | `23-fix-issue3-no-403-noise.png` |
+
+### 변경된 파일
+
+- `client.js`
+  - `api()` — fetch 옵션 통과 + AbortError 보존
+  - `ProductDetailPage.toggleFav` — 낙관적 업데이트
+  - `ProductDetailPage` productRooms useEffect — AbortController
+  - `ChatRoomPage` 입력 — IME-safe Enter, 자동보정 OFF
+
+---
+
+## ⚠️ 원본 발견 이슈 (참고용 — 위에서 모두 해결 완료)
 
 ### 이슈 1. Chrome DevTools `fill` — 한글+공백/숫자/문장부호 누락
 - **현상**: `mcp__chrome-devtools__fill`로 메시지 입력란에 `"네 판매중입니다! 강남역 11번 출구 어떠세요?"` 입력 시, 실제 input value는 `"네판매중입니다강남역번출구어떠세요"`로 공백·숫자·`!`·`?` 누락.
