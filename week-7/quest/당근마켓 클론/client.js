@@ -140,6 +140,11 @@ function Header() {
         <nav className="flex items-center gap-1 text-sm">
           {user ? (
             <>
+              {user.is_admin && (
+                <a href="#/admin" className="px-2 py-1 rounded-md bg-amber-100 text-amber-800 font-semibold hover:bg-amber-200 flex items-center gap-1">
+                  <span>👑</span><span className="hidden sm:inline">관리자</span>
+                </a>
+              )}
               <a href="#/products/new" className="px-3 py-1.5 rounded-md bg-carrot-500 text-white font-semibold hover:bg-carrot-600">+ 등록</a>
               <a href="#/me" className="px-2 py-1.5 rounded-md hover:bg-gray-100 flex items-center gap-1">
                 <span className="text-base">{user.avatar_emoji || '🥕'}</span>
@@ -427,7 +432,7 @@ function ProductFormPage({ id }) {
     (async () => {
       try {
         const p = await api(`/api/products/${id}`);
-        if (!p.is_owner) { setErr('본인 상품만 수정할 수 있어요'); return; }
+        if (!p.is_owner && !p.can_modify) { setErr('본인 상품만 수정할 수 있어요'); return; }
         setTitle(p.title); setPrice(String(p.price)); setCategory(p.category);
         setDescription(p.description || ''); setImages(p.images.map((i) => i.url));
       } catch (e) { setErr(e.message); }
@@ -601,8 +606,10 @@ function ProductDetailPage({ id }) {
           <div className="font-semibold">{p.seller_nickname}</div>
           <div className="text-sm text-gray-500">{p.seller_neighborhood}</div>
         </div>
-        {p.is_owner && (
-          <a href={`#/products/${p.id}/edit`} className="text-sm text-carrot-600 font-semibold">수정</a>
+        {(p.is_owner || p.can_modify) && (
+          <a href={`#/products/${p.id}/edit`} className="text-sm text-carrot-600 font-semibold">
+            {p.is_owner ? '수정' : '👑 수정'}
+          </a>
         )}
       </div>
       <div className="px-4 py-4 bg-white">
@@ -903,6 +910,147 @@ function ChatRoomPage({ id }) {
 }
 
 // ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+function AdminPage() {
+  const { user, loading: authLoading } = useAuth();
+  const [tab, setTab] = useState('users');
+  const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    if (!authLoading && (!user || !user.is_admin)) navigate('/');
+  }, [authLoading, user]);
+
+  const load = useCallback(async () => {
+    if (!user?.is_admin) return;
+    setLoading(true); setErr('');
+    try {
+      const [s, u, p] = await Promise.all([
+        api('/api/admin/stats'),
+        api('/api/admin/users'),
+        api('/api/admin/products'),
+      ]);
+      setStats(s); setUsers(u); setProducts(p);
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  }, [user]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const toggleAdmin = async (u) => {
+    if (u.id === user.id) { alert('본인 권한은 스스로 해제할 수 없어요'); return; }
+    if (!confirm(`${u.nickname} 님을 ${u.is_admin ? '일반 사용자' : '관리자'}로 변경할까요?`)) return;
+    try {
+      await api(`/api/admin/users/${u.id}`, { method: 'PATCH', body: JSON.stringify({ is_admin: !u.is_admin }) });
+      await load();
+    } catch (e) { alert(e.message); }
+  };
+
+  const deleteUser = async (u) => {
+    if (u.id === user.id) { alert('본인은 삭제할 수 없어요'); return; }
+    if (!confirm(`${u.nickname}(${u.email}) 사용자를 삭제할까요?\n등록 상품과 채팅도 모두 함께 삭제됩니다.`)) return;
+    try { await api(`/api/admin/users/${u.id}`, { method: 'DELETE' }); await load(); }
+    catch (e) { alert(e.message); }
+  };
+
+  const deleteProduct = async (p) => {
+    if (!confirm(`상품 "${p.title}" 을(를) 삭제할까요?`)) return;
+    try { await api(`/api/products/${p.id}`, { method: 'DELETE' }); await load(); }
+    catch (e) { alert(e.message); }
+  };
+
+  if (!user || !user.is_admin) return null;
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-4">
+      <div className="bg-gradient-to-br from-amber-100 to-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+        <div className="text-amber-900 font-bold flex items-center gap-2">
+          <span className="text-xl">👑</span><span>관리자 대시보드</span>
+        </div>
+        <div className="text-sm text-amber-800/80 mt-1">{user.email}</div>
+      </div>
+
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-4">
+          {[
+            ['users','사용자'],['products','상품'],['favorites','관심'],
+            ['rooms','채팅방'],['messages','메시지'],
+          ].map(([k, label]) => (
+            <div key={k} className="bg-white rounded-xl border border-gray-100 p-3 text-center">
+              <div className="text-xs text-gray-500">{label}</div>
+              <div className="text-xl font-bold mt-0.5">{stats[k]}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex bg-white rounded-xl border border-gray-100 overflow-hidden text-sm font-semibold mb-3">
+        {[['users','사용자 관리'],['products','상품 관리']].map(([k, l]) => (
+          <button key={k} onClick={() => setTab(k)}
+            className={`flex-1 py-3 ${tab === k ? 'bg-carrot-500 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>{l}</button>
+        ))}
+      </div>
+
+      {err && <div className="text-red-600 text-sm mb-2">{err}</div>}
+
+      {loading ? (
+        <div className="text-center py-12 text-gray-400">불러오는 중...</div>
+      ) : tab === 'users' ? (
+        <ul className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-100">
+          {users.map((u) => (
+            <li key={u.id} className="p-3 flex items-center gap-3">
+              <div className="w-11 h-11 rounded-full bg-carrot-100 flex items-center justify-center text-2xl shrink-0">{u.avatar_emoji}</div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold flex items-center gap-1.5 flex-wrap">
+                  <span>{u.nickname}</span>
+                  {u.is_admin && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold">ADMIN</span>}
+                  {u.id === user.id && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">나</span>}
+                </div>
+                <div className="text-xs text-gray-500 truncate">{u.email}</div>
+                <div className="text-xs text-gray-400">{u.neighborhood} · 상품 {u.product_count}개 · {formatTimeAgo(u.created_at)}</div>
+              </div>
+              <div className="flex flex-col gap-1 shrink-0">
+                <button onClick={() => toggleAdmin(u)} disabled={u.id === user.id}
+                  className="text-xs px-2 py-1 rounded border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40">
+                  {u.is_admin ? '권한 해제' : '관리자 지정'}
+                </button>
+                <button onClick={() => deleteUser(u)} disabled={u.id === user.id}
+                  className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-40">
+                  삭제
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <ul className="bg-white rounded-xl border border-gray-100 divide-y divide-gray-100">
+          {products.length === 0 && <EmptyState icon="📦" title="등록된 상품이 없어요" />}
+          {products.map((p) => (
+            <li key={p.id} className="p-3 flex items-center gap-3">
+              <Thumbnail url={p.thumbnail} title={p.title} />
+              <div className="flex-1 min-w-0">
+                <a href={`#/products/${p.id}`} className="font-semibold truncate block hover:text-carrot-600">{p.title}</a>
+                <div className="text-sm text-gray-700">{formatPrice(p.price)} · {p.category}</div>
+                <div className="text-xs text-gray-500 truncate">@{p.seller_nickname} ({p.seller_email}) · {formatTimeAgo(p.created_at)}</div>
+              </div>
+              <div className="flex flex-col gap-1 shrink-0">
+                <a href={`#/products/${p.id}/edit`} className="text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 text-center">수정</a>
+                <button onClick={() => deleteProduct(p)}
+                  className="text-xs px-2 py-1 rounded border border-red-300 text-red-600 hover:bg-red-50">삭제</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // App / Router
 // ---------------------------------------------------------------------------
 function App() {
@@ -916,6 +1064,7 @@ function App() {
   else if (path === '/login') body = <LoginPage />;
   else if (path === '/signup') body = <SignupPage />;
   else if (path === '/me') body = <MyPage />;
+  else if (path === '/admin') body = <AdminPage />;
   else if (path === '/products/new') body = <ProductFormPage />;
   else {
     let m = path.match(/^\/products\/(\d+)\/edit$/);

@@ -75,9 +75,22 @@ node seed.js            # (선택) 샘플 사용자 + 상품 + ImageKit 이미�
 ```
 
 `seed.js`는 다음을 수행합니다:
-- 3명의 샘플 사용자 생성 (모두 비밀번호: `carrot123`)
-  - `minji@carrot.test` / `jihoon@carrot.test` / `soyeon@carrot.test`
+- 관리자 1명 + 일반 사용자 3명 시딩
+  - **`admin@carrot.test` / `admin1234`** (👑 ADMIN)
+  - `minji@carrot.test` / `carrot123`
+  - `jihoon@carrot.test` / `carrot123`
+  - `soyeon@carrot.test` / `carrot123`
 - 9개의 상품마다 이모지+제목+그라디언트로 SVG 썸네일을 생성 → ImageKit에 업로드 → URL을 DB에 기록
+
+## 관리자 (👑)
+
+`is_admin = TRUE` 유저는 헤더에 **👑 관리자** 링크가 노출되며, `#/admin` 대시보드에서 다음을 수행할 수 있어요.
+
+- 전체 통계 (사용자/상품/관심/채팅방/메시지 카운트)
+- 사용자 관리: 권한 부여/해제, 강제 삭제 (본인 제외)
+- 상품 관리: 모든 상품의 수정/삭제
+
+서버 측에서도 상품 PUT/DELETE는 본인 또는 관리자만 통과하도록 검증합니다.
 
 ## API 요약
 
@@ -106,6 +119,12 @@ POST   /api/rooms                채팅방 생성/get-or-create (JWT)
 GET    /api/rooms/:id            채팅방 정보 (JWT)
 GET    /api/rooms/:id/messages?since=N   메시지 폴링 (JWT)
 POST   /api/rooms/:id/messages   메시지 전송 (JWT)
+
+GET    /api/admin/stats          전체 통계 (👑)
+GET    /api/admin/users          사용자 목록 (👑)
+PATCH  /api/admin/users/:id      관리자 권한 토글 (👑)
+DELETE /api/admin/users/:id      사용자 강제 삭제 (👑)
+GET    /api/admin/products       전체 상품 (판매자 정보 포함, 👑)
 ```
 
 ## 권한 / 보안

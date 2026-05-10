@@ -32,9 +32,10 @@ const imagekit = new ImageKit({
 });
 
 const USERS = [
-  { email: 'minji@carrot.test',  password: 'carrot123', nickname: '민지', neighborhood: '역삼동', avatar_emoji: '🦊' },
-  { email: 'jihoon@carrot.test', password: 'carrot123', nickname: '지훈', neighborhood: '서교동', avatar_emoji: '🐻' },
-  { email: 'soyeon@carrot.test', password: 'carrot123', nickname: '소연', neighborhood: '망원동', avatar_emoji: '🐰' },
+  { email: 'admin@carrot.test',  password: 'admin1234', nickname: '관리자', neighborhood: '본사',     avatar_emoji: '👑', is_admin: true },
+  { email: 'minji@carrot.test',  password: 'carrot123', nickname: '민지',   neighborhood: '역삼동', avatar_emoji: '🦊' },
+  { email: 'jihoon@carrot.test', password: 'carrot123', nickname: '지훈',   neighborhood: '서교동', avatar_emoji: '🐻' },
+  { email: 'soyeon@carrot.test', password: 'carrot123', nickname: '소연',   neighborhood: '망원동', avatar_emoji: '🐰' },
 ];
 
 const PRODUCTS = [
@@ -80,14 +81,18 @@ async function uploadSvg({ title, emoji, bg }) {
   return uploaded.url;
 }
 
-async function ensureUser({ email, password, nickname, neighborhood, avatar_emoji }) {
+async function ensureUser({ email, password, nickname, neighborhood, avatar_emoji, is_admin = false }) {
   const existing = await pool.query(`SELECT id FROM ${T.users} WHERE email = $1`, [email]);
-  if (existing.rows[0]) return existing.rows[0].id;
+  if (existing.rows[0]) {
+    // 관리자 권한 보정
+    if (is_admin) await pool.query(`UPDATE ${T.users} SET is_admin = TRUE WHERE id = $1`, [existing.rows[0].id]);
+    return existing.rows[0].id;
+  }
   const hash = await bcrypt.hash(password, 10);
   const r = await pool.query(
-    `INSERT INTO ${T.users} (email, password_hash, nickname, neighborhood, avatar_emoji)
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [email, hash, nickname, neighborhood, avatar_emoji]
+    `INSERT INTO ${T.users} (email, password_hash, nickname, neighborhood, avatar_emoji, is_admin)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [email, hash, nickname, neighborhood, avatar_emoji, is_admin]
   );
   return r.rows[0].id;
 }
@@ -102,8 +107,10 @@ async function ensureSchema() {
       nickname TEXT NOT NULL,
       neighborhood TEXT NOT NULL,
       avatar_emoji TEXT NOT NULL DEFAULT '🥕',
+      is_admin BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );`);
+  await pool.query(`ALTER TABLE ${T.users} ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${T.products} (
       id BIGSERIAL PRIMARY KEY,
@@ -174,8 +181,11 @@ async function main() {
   }
 
   console.log('\n✔ seed 완료');
-  console.log('\n로그인 계정 (모두 비밀번호: carrot123)');
-  for (const u of USERS) console.log(`  · ${u.email} (${u.nickname} · ${u.neighborhood})`);
+  console.log('\n로그인 계정');
+  for (const u of USERS) {
+    const tag = u.is_admin ? '👑 ADMIN' : '일반';
+    console.log(`  · ${u.email} / ${u.password}  (${u.nickname} · ${u.neighborhood})  [${tag}]`);
+  }
 
   await pool.end();
 }

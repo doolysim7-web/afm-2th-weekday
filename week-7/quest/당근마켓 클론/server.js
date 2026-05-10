@@ -48,9 +48,12 @@ async function initDB() {
       nickname        TEXT NOT NULL,
       neighborhood    TEXT NOT NULL,
       avatar_emoji    TEXT NOT NULL DEFAULT '🥕',
+      is_admin        BOOLEAN NOT NULL DEFAULT FALSE,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  // 기존 DB에도 안전하게 추가
+  await pool.query(`ALTER TABLE ${T.users} ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${T.products} (
       id              BIGSERIAL PRIMARY KEY,
@@ -149,6 +152,17 @@ function authRequired(req, res, next) {
   }
 }
 
+async function adminRequired(req, res, next) {
+  try {
+    const r = await pool.query(`SELECT is_admin FROM ${T.users} WHERE id = $1`, [req.userId]);
+    if (!r.rows[0]?.is_admin) return res.status(403).json({ success: false, message: '관리자 전용' });
+    next();
+  } catch (err) {
+    console.error('adminRequired failed:', err);
+    res.status(500).json({ success: false, message: '권한 확인 실패' });
+  }
+}
+
 function authOptional(req, _res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -199,7 +213,7 @@ app.post('/api/auth/signup', async (req, res) => {
       const r = await pool.query(
         `INSERT INTO ${T.users} (email, password_hash, nickname, neighborhood, avatar_emoji)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, email, nickname, neighborhood, avatar_emoji, created_at`,
+         RETURNING id, email, nickname, neighborhood, avatar_emoji, is_admin, created_at`,
         [e, hash, n, nb, av]
       );
       row = r.rows[0];
@@ -223,7 +237,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
     const e = email.trim().toLowerCase();
     const r = await pool.query(
-      `SELECT id, email, password_hash, nickname, neighborhood, avatar_emoji, created_at
+      `SELECT id, email, password_hash, nickname, neighborhood, avatar_emoji, is_admin, created_at
          FROM ${T.users} WHERE email = $1`,
       [e]
     );
@@ -242,7 +256,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', authRequired, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT id, email, nickname, neighborhood, avatar_emoji, created_at
+      `SELECT id, email, nickname, neighborhood, avatar_emoji, is_admin, created_at
          FROM ${T.users} WHERE id = $1`,
       [req.userId]
     );
@@ -267,7 +281,7 @@ app.patch('/api/auth/me', authRequired, async (req, res) => {
     vals.push(req.userId);
     const r = await pool.query(
       `UPDATE ${T.users} SET ${fields.join(', ')} WHERE id = $${i}
-       RETURNING id, email, nickname, neighborhood, avatar_emoji, created_at`,
+       RETURNING id, email, nickname, neighborhood, avatar_emoji, is_admin, created_at`,
       vals
     );
     res.json({ success: true, data: r.rows[0] });
@@ -359,12 +373,15 @@ app.get('/api/products/:id', authOptional, async (req, res) => {
       [id]
     );
     let isFavorite = false;
+    let isAdmin = false;
     if (req.userId) {
       const f = await pool.query(
         `SELECT 1 FROM ${T.favorites} WHERE user_id = $1 AND product_id = $2`,
         [req.userId, id]
       );
       isFavorite = f.rowCount > 0;
+      const a = await pool.query(`SELECT is_admin FROM ${T.users} WHERE id = $1`, [req.userId]);
+      isAdmin = !!a.rows[0]?.is_admin;
     }
     res.json({
       success: true,
@@ -374,6 +391,7 @@ app.get('/api/products/:id', authOptional, async (req, res) => {
         favorite_count: favCount.rows[0].c,
         is_favorite: isFavorite,
         is_owner: req.userId === p.rows[0].user_id,
+        can_modify: req.userId === p.rows[0].user_id || isAdmin,
       },
     });
   } catch (err) {
@@ -427,7 +445,10 @@ app.put('/api/products/:id', authRequired, async (req, res) => {
     if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
     const own = await client.query(`SELECT user_id FROM ${T.products} WHERE id = $1`, [id]);
     if (!own.rows[0]) return res.status(404).json({ success: false, message: '상품 없음' });
-    if (own.rows[0].user_id !== req.userId) return res.status(403).json({ success: false, message: '본인 상품만 수정 가능' });
+    if (own.rows[0].user_id !== req.userId) {
+      const me = await client.query(`SELECT is_admin FROM ${T.users} WHERE id = $1`, [req.userId]);
+      if (!me.rows[0]?.is_admin) return res.status(403).json({ success: false, message: '본인 상품만 수정 가능' });
+    }
 
     const { title, price, description, category, images } = req.body || {};
     if (typeof title !== 'string' || !title.trim()) return res.status(400).json({ success: false, message: '제목 필수' });
@@ -467,7 +488,10 @@ app.delete('/api/products/:id', authRequired, async (req, res) => {
     if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
     const own = await pool.query(`SELECT user_id FROM ${T.products} WHERE id = $1`, [id]);
     if (!own.rows[0]) return res.status(404).json({ success: false, message: '상품 없음' });
-    if (own.rows[0].user_id !== req.userId) return res.status(403).json({ success: false, message: '본인 상품만 삭제 가능' });
+    if (own.rows[0].user_id !== req.userId) {
+      const me = await pool.query(`SELECT is_admin FROM ${T.users} WHERE id = $1`, [req.userId]);
+      if (!me.rows[0]?.is_admin) return res.status(403).json({ success: false, message: '본인 상품만 삭제 가능' });
+    }
     await pool.query(`DELETE FROM ${T.products} WHERE id = $1`, [id]);
     res.json({ success: true, data: { id } });
   } catch (err) {
@@ -687,6 +711,95 @@ app.post('/api/rooms/:id/messages', authRequired, async (req, res) => {
   } catch (err) {
     console.error('send message failed:', err);
     res.status(500).json({ success: false, message: '전송 실패' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Admin (전용)
+// ---------------------------------------------------------------------------
+app.get('/api/admin/stats', authRequired, adminRequired, async (_req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM ${T.users}) AS users,
+        (SELECT COUNT(*)::int FROM ${T.products}) AS products,
+        (SELECT COUNT(*)::int FROM ${T.favorites}) AS favorites,
+        (SELECT COUNT(*)::int FROM ${T.rooms}) AS rooms,
+        (SELECT COUNT(*)::int FROM ${T.messages}) AS messages
+    `);
+    res.json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    console.error('admin stats failed:', err);
+    res.status(500).json({ success: false, message: '통계 실패' });
+  }
+});
+
+app.get('/api/admin/users', authRequired, adminRequired, async (_req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT u.id, u.email, u.nickname, u.neighborhood, u.avatar_emoji, u.is_admin, u.created_at,
+              (SELECT COUNT(*)::int FROM ${T.products} WHERE user_id = u.id) AS product_count
+         FROM ${T.users} u
+         ORDER BY u.id ASC`
+    );
+    res.json({ success: true, data: r.rows });
+  } catch (err) {
+    console.error('admin users failed:', err);
+    res.status(500).json({ success: false, message: '사용자 조회 실패' });
+  }
+});
+
+app.patch('/api/admin/users/:id', authRequired, adminRequired, async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    if (typeof req.body?.is_admin !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'is_admin (boolean) 필요' });
+    }
+    if (id === req.userId && req.body.is_admin === false) {
+      return res.status(400).json({ success: false, message: '본인 권한은 스스로 해제 불가' });
+    }
+    const r = await pool.query(
+      `UPDATE ${T.users} SET is_admin = $1 WHERE id = $2
+       RETURNING id, email, nickname, is_admin`,
+      [req.body.is_admin, id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ success: false, message: '사용자 없음' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    console.error('admin patch user failed:', err);
+    res.status(500).json({ success: false, message: '권한 변경 실패' });
+  }
+});
+
+app.delete('/api/admin/users/:id', authRequired, adminRequired, async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    if (id === req.userId) return res.status(400).json({ success: false, message: '본인은 삭제 불가' });
+    const r = await pool.query(`DELETE FROM ${T.users} WHERE id = $1 RETURNING id`, [id]);
+    if (!r.rows[0]) return res.status(404).json({ success: false, message: '사용자 없음' });
+    res.json({ success: true, data: { id } });
+  } catch (err) {
+    console.error('admin delete user failed:', err);
+    res.status(500).json({ success: false, message: '사용자 삭제 실패' });
+  }
+});
+
+app.get('/api/admin/products', authRequired, adminRequired, async (_req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT p.id, p.title, p.price, p.category, p.neighborhood, p.created_at,
+              u.id AS user_id, u.nickname AS seller_nickname, u.email AS seller_email,
+              (SELECT url FROM ${T.images} WHERE product_id = p.id ORDER BY position ASC LIMIT 1) AS thumbnail
+         FROM ${T.products} p
+         JOIN ${T.users} u ON u.id = p.user_id
+         ORDER BY p.created_at DESC`
+    );
+    res.json({ success: true, data: r.rows });
+  } catch (err) {
+    console.error('admin products failed:', err);
+    res.status(500).json({ success: false, message: '상품 조회 실패' });
   }
 });
 
