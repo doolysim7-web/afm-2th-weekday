@@ -1,0 +1,34 @@
+[
+  {
+    "key": "black-amber",
+    "name": "BLACK AMBER",
+    "local": "zara-black-amber.svg",
+    "url": "https://ik.imagekit.io/3um8y0hge/zara-perfume/zara-black-amber_pHuzsbWzV.svg",
+    "width": 800,
+    "height": 800
+  },
+  {
+    "key": "rose-vanilla",
+    "name": "ROSE VANILLA",
+    "local": "zara-rose-vanilla.svg",
+    "url": "https://ik.imagekit.io/3um8y0hge/zara-perfume/zara-rose-vanilla_2aB4DTlb4.svg",
+    "width": 800,
+    "height": 800
+  },
+  {
+    "key": "gold-for-her",
+    "name": "GOLD FOR HER",
+    "local": "zara-gold-for-her.svg",
+    "url": "https://ik.imagekit.io/3um8y0hge/zara-perfume/zara-gold-for-her_u0geyuuj2.svg",
+    "width": 800,
+    "height": 800
+  },
+  {
+    "key": "wonder-rose",
+    "name": "WONDER ROSE",
+    "local": "zara-wonder-rose.svg",
+    "url": "https://ik.imagekit.io/3um8y0hge/zara-perfume/zara-wonder-rose_MqaeTRr2r.svg",
+    "width": 800,
+    "height": 800
+  }
+]
