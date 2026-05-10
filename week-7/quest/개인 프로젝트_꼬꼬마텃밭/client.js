@@ -518,6 +518,14 @@ function CropDetailPage({ id }) {
   };
   if (err) return <div className="max-w-3xl mx-auto p-4 text-red-600">{err}</div>;
   if (!c) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-400">불러오는 중...</div>;
+
+  // 정보 보강이 필요한지 판별 — 즉석 추가된 작목 기본 패턴 또는 빈 값
+  const isIncomplete =
+    !c.summary_md ||
+    c.summary_md.includes('직접 추가한 작목') ||
+    c.summary_md.length < 10 ||
+    !c.sunlight ||
+    (c.tasks || []).length === 0;
   // tasks group by month
   const byMonth = {};
   (c.tasks || []).forEach(t => { (byMonth[t.month] ||= []).push(t); });
@@ -526,6 +534,18 @@ function CropDetailPage({ id }) {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
+      {isIncomplete && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-3 flex items-start gap-3">
+          <div className="text-2xl">🌱</div>
+          <div className="flex-1">
+            <div className="font-semibold text-amber-900">이 작목 가이드가 아직 비어 있어요</div>
+            <div className="text-sm text-amber-800/80 mt-0.5">언제 심고, 어떻게 가꾸는지 직접 적어주시면 다른 텃밭러에게도 큰 도움이 돼요.</div>
+          </div>
+          {user && (
+            <a href={`#/crops/${id}/edit`} className="btn-primary text-sm shrink-0">📝 추가 정보 만들기</a>
+          )}
+        </div>
+      )}
       <div className="bg-white rounded-3xl border border-leaf-100 overflow-hidden">
         {c.hero_image_url ? (
           <img src={c.hero_image_url} className="w-full aspect-[4/3] object-cover bg-leaf-50" />
@@ -533,9 +553,14 @@ function CropDetailPage({ id }) {
           <div className="w-full aspect-[4/3] bg-leaf-50 flex items-center justify-center text-7xl">🌱</div>
         )}
         <div className="p-5">
-          <div className="text-xs text-leaf-700 font-semibold">{c.category} · {c.season_start_month}~{c.season_end_month}월 시즌</div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs text-leaf-700 font-semibold">{c.category} · {c.season_start_month}~{c.season_end_month}월 시즌</div>
+            {user && !isIncomplete && (
+              <a href={`#/crops/${id}/edit`} className="text-xs text-leaf-700 hover:text-leaf-800 font-semibold">✎ 정보 편집</a>
+            )}
+          </div>
           <h1 className="text-2xl font-bold mt-1">{c.name_ko} <span className="text-base font-normal text-gray-500">{c.name_en}</span></h1>
-          <p className="text-gray-700 mt-2 prose-mini">{c.summary_md}</p>
+          <p className="text-gray-700 mt-2 prose-mini">{c.summary_md || <span className="text-gray-400">한 줄 소개가 아직 없어요</span>}</p>
           <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
             <div className="bg-leaf-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">햇빛</div><div className="font-semibold mt-0.5">{c.sunlight || '-'}</div></div>
             <div className="bg-leaf-50 rounded-lg p-3 text-center"><div className="text-xs text-gray-500">물주기</div><div className="font-semibold mt-0.5">{c.water_freq_days}일에 1회</div></div>
@@ -555,9 +580,20 @@ function CropDetailPage({ id }) {
         </div>
       </div>
 
-      <h2 className="text-xl font-bold mt-6 mb-3">🗓 월별 작업 ({py}평 기준)</h2>
+      <div className="flex items-center justify-between mt-6 mb-3">
+        <h2 className="text-xl font-bold">🗓 월별 작업 ({py}평 기준)</h2>
+        {user && (
+          <a href={`#/crops/${id}/edit`} className="text-sm text-leaf-700 font-semibold">+ 작업 추가</a>
+        )}
+      </div>
       {months.length === 0 ? (
-        <div className="text-sm text-gray-500">등록된 작업이 없어요</div>
+        <div className="bg-leaf-50 rounded-2xl p-5 text-center text-sm text-gray-600">
+          <div className="text-2xl mb-1">🗓</div>
+          <div>아직 등록된 월별 작업이 없어요.</div>
+          {user && (
+            <a href={`#/crops/${id}/edit`} className="inline-block mt-2 btn-primary text-sm">📝 첫 작업 추가하기</a>
+          )}
+        </div>
       ) : (
         <div className="space-y-3">
           {months.map((m) => (
@@ -577,6 +613,231 @@ function CropDetailPage({ id }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Crop edit (정보·작업 보강)
+// ---------------------------------------------------------------------------
+const TASK_TYPES_UI = ['모종', '시비', '관수', '수확', '풀뽑기', '병해충관리'];
+function CropEditPage({ id }) {
+  const { user, loading: authLoading } = useAuth();
+  const [c, setC] = useState(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // 작목 기본 정보
+  const [category, setCategory] = useState('엽채');
+  const [seasonStart, setSeasonStart] = useState(3);
+  const [seasonEnd, setSeasonEnd] = useState(10);
+  const [sunlight, setSunlight] = useState('');
+  const [waterFreq, setWaterFreq] = useState(2);
+  const [soilPref, setSoilPref] = useState('');
+  const [summary, setSummary] = useState('');
+  const [hero, setHero] = useState('');
+  const [beginner, setBeginner] = useState(false);
+
+  // 작업 추가 폼
+  const [taskType, setTaskType] = useState('모종');
+  const [taskMonth, setTaskMonth] = useState(4);
+  const [taskWeek, setTaskWeek] = useState(0);
+  const [taskInst, setTaskInst] = useState('');
+  const [taskP5, setTaskP5] = useState('');
+  const [taskP10, setTaskP10] = useState('');
+  const [taskP20, setTaskP20] = useState('');
+  const [taskBusy, setTaskBusy] = useState(false);
+  const [taskErr, setTaskErr] = useState('');
+
+  useEffect(() => { if (!authLoading && !user) navigate('/login'); }, [authLoading, user]);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api(`/api/crops/${id}`);
+      setC(data);
+      setCategory(data.category || '엽채');
+      setSeasonStart(data.season_start_month || 3);
+      setSeasonEnd(data.season_end_month || 10);
+      setSunlight(data.sunlight || '');
+      setWaterFreq(data.water_freq_days || 2);
+      setSoilPref(data.soil_pref || '');
+      // 자동 생성 placeholder는 비워두기
+      setSummary((data.summary_md || '').includes('직접 추가한 작목') ? '' : (data.summary_md || ''));
+      setHero(data.hero_image_url || '');
+      setBeginner(!!data.beginner_friendly);
+    } catch (e) { setErr(e.message); }
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
+
+  const saveInfo = async (e) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try {
+      await api(`/api/crops/${id}/info`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          category, season_start_month: seasonStart, season_end_month: seasonEnd,
+          sunlight, water_freq_days: waterFreq, soil_pref: soilPref,
+          summary_md: summary, hero_image_url: hero, beginner_friendly: beginner,
+        }),
+      });
+      alert('정보가 저장됐어요 🌱');
+      await load();
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  };
+
+  const addTask = async (e) => {
+    e.preventDefault(); setTaskErr(''); setTaskBusy(true);
+    try {
+      await api(`/api/crops/${id}/tasks`, {
+        method: 'POST',
+        body: JSON.stringify({
+          task_type: taskType, month: taskMonth, week_in_month: taskWeek,
+          instructions_md: taskInst,
+          per_5pyeong_amount: taskP5, per_10pyeong_amount: taskP10, per_20pyeong_amount: taskP20,
+        }),
+      });
+      // reset 폼
+      setTaskInst(''); setTaskP5(''); setTaskP10(''); setTaskP20('');
+      await load();
+    } catch (ex) { setTaskErr(ex.message); }
+    finally { setTaskBusy(false); }
+  };
+
+  const removeTask = async (taskId) => {
+    if (!confirm('이 작업을 삭제할까요? (관리자만 가능)')) return;
+    try { await api(`/api/crops/${id}/tasks/${taskId}`, { method: 'DELETE' }); await load(); }
+    catch (ex) { alert(ex.message); }
+  };
+
+  if (!user) return null;
+  if (err && !c) return <div className="max-w-3xl mx-auto p-4 text-red-600">{err}</div>;
+  if (!c) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-400">불러오는 중...</div>;
+
+  const tasksByMonth = {};
+  (c.tasks || []).forEach(t => { (tasksByMonth[t.month] ||= []).push(t); });
+  const months = Object.keys(tasksByMonth).map(Number).sort((a,b)=>a-b);
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+      <div className="flex items-center gap-2">
+        <a href={`#/crops/${id}`} className="text-leaf-700 text-xl">←</a>
+        <h1 className="text-2xl font-bold">{c.name_ko} 정보 보강</h1>
+      </div>
+
+      {/* 1. 작목 기본 정보 */}
+      <form onSubmit={saveInfo} className="bg-white rounded-2xl border border-leaf-100 p-5 space-y-3">
+        <h2 className="font-bold flex items-center gap-1.5">📋 기본 정보</h2>
+        <Field label="한 줄 소개">
+          <textarea rows={2} maxLength={500} className="input" value={summary} onChange={(e)=>setSummary(e.target.value)}
+            placeholder="예: 한 번 심으면 가을까지 잎을 따 먹어요. 향이 진해서 쌈에 잘 어울려요." />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="카테고리">
+            <select className="input" value={category} onChange={(e)=>setCategory(e.target.value)}>
+              {['엽채','과채','근채','곡류','허브'].map((x)=><option key={x} value={x}>{x}</option>)}
+            </select>
+          </Field>
+          <Field label="물주기 (일)">
+            <input type="number" min={1} max={30} className="input" value={waterFreq}
+              onChange={(e)=>setWaterFreq(Number(e.target.value))} />
+          </Field>
+          <Field label="시즌 시작월">
+            <select className="input" value={seasonStart} onChange={(e)=>setSeasonStart(Number(e.target.value))}>
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map((m)=><option key={m} value={m}>{m}월</option>)}
+            </select>
+          </Field>
+          <Field label="시즌 종료월">
+            <select className="input" value={seasonEnd} onChange={(e)=>setSeasonEnd(Number(e.target.value))}>
+              {[1,2,3,4,5,6,7,8,9,10,11,12].map((m)=><option key={m} value={m}>{m}월</option>)}
+            </select>
+          </Field>
+          <Field label="햇빛">
+            <input className="input" value={sunlight} onChange={(e)=>setSunlight(e.target.value)} placeholder="예: 양지 / 반양지" />
+          </Field>
+          <Field label="좋아하는 흙">
+            <input className="input" value={soilPref} onChange={(e)=>setSoilPref(e.target.value)} placeholder="예: 비옥한 토양" />
+          </Field>
+        </div>
+        <Field label="hero 이미지 URL (선택)" hint="ImageKit/외부 이미지 URL을 붙여 넣을 수 있어요. 없으면 🌱 기본 아이콘이 보여요.">
+          <input className="input" value={hero} onChange={(e)=>setHero(e.target.value)} placeholder="https://..." />
+        </Field>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" className="w-4 h-4 accent-leaf-500" checked={beginner} onChange={(e)=>setBeginner(e.target.checked)} />
+          <span>♥ 초보용 작목 (쉬워서 처음 시작하기 좋음)</span>
+        </label>
+        {err && <div className="text-sm text-red-600">{err}</div>}
+        <button disabled={busy} className="btn-primary w-full">{busy ? '저장 중...' : '기본 정보 저장'}</button>
+      </form>
+
+      {/* 2. 월별 작업 목록 + 추가 폼 */}
+      <div className="bg-white rounded-2xl border border-leaf-100 p-5 space-y-3">
+        <h2 className="font-bold flex items-center gap-1.5">🗓 월별 작업 <span className="text-sm text-gray-500 font-normal">({(c.tasks || []).length}건)</span></h2>
+        {months.length === 0 ? (
+          <div className="text-sm text-gray-500 bg-leaf-50 rounded-xl p-4 text-center">
+            아직 작업이 없어요. 아래에서 첫 작업을 추가해보세요 🌱
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {months.map((m) => (
+              <div key={m} className="rounded-xl border border-leaf-100 p-3">
+                <div className="font-semibold text-leaf-700">{m}월</div>
+                <ul className="mt-1 space-y-1">
+                  {tasksByMonth[m].map((t) => (
+                    <li key={t.id} className="text-sm flex gap-2 items-start">
+                      <span className="font-semibold">{t.task_type}</span>
+                      {t.week_in_month > 0 && <span className="text-xs text-gray-400">{m}월 {t.week_in_month}주차</span>}
+                      <span className="text-gray-700 flex-1">{t.instructions_md || <span className="text-gray-400">(설명 없음)</span>}</span>
+                      {t.per_5pyeong_amount && <span className="text-xs text-leaf-700 shrink-0">5평 {t.per_5pyeong_amount}</span>}
+                      {user.role === 'admin' && (
+                        <button onClick={()=>removeTask(t.id)} className="text-xs text-red-500 shrink-0">✕</button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={addTask} className="bg-leaf-50 rounded-xl p-4 mt-3 space-y-2">
+          <div className="text-sm font-semibold text-gray-700">＋ 작업 추가</div>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="유형">
+              <select className="input" value={taskType} onChange={(e)=>setTaskType(e.target.value)}>
+                {TASK_TYPES_UI.map((x)=><option key={x} value={x}>{x}</option>)}
+              </select>
+            </Field>
+            <Field label="월">
+              <select className="input" value={taskMonth} onChange={(e)=>setTaskMonth(Number(e.target.value))}>
+                {[1,2,3,4,5,6,7,8,9,10,11,12].map((m)=><option key={m} value={m}>{m}월</option>)}
+              </select>
+            </Field>
+            <Field label="주차 (0=무관)">
+              <select className="input" value={taskWeek} onChange={(e)=>setTaskWeek(Number(e.target.value))}>
+                {[0,1,2,3,4,5].map((w)=><option key={w} value={w}>{w === 0 ? '—' : `${w}주차`}</option>)}
+              </select>
+            </Field>
+          </div>
+          <Field label="작업 설명">
+            <input className="input" value={taskInst} onChange={(e)=>setTaskInst(e.target.value)}
+              placeholder="예: 서리 끝난 후 모종. 줄간격 50cm, 지지대 같이 박기" />
+          </Field>
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="5평 분량 (선택)">
+              <input className="input" value={taskP5} onChange={(e)=>setTaskP5(e.target.value)} placeholder="예: 5그루" />
+            </Field>
+            <Field label="10평 분량 (선택)">
+              <input className="input" value={taskP10} onChange={(e)=>setTaskP10(e.target.value)} placeholder="예: 10그루" />
+            </Field>
+            <Field label="20평 분량 (선택)">
+              <input className="input" value={taskP20} onChange={(e)=>setTaskP20(e.target.value)} placeholder="예: 20그루" />
+            </Field>
+          </div>
+          {taskErr && <div className="text-sm text-red-600">{taskErr}</div>}
+          <button disabled={taskBusy} className="btn-primary w-full text-sm">{taskBusy ? '추가 중...' : '+ 작업 추가'}</button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -1609,6 +1870,7 @@ function App() {
   else if (path === '/calendar') body = <CalendarPage />;
   else if (path.match(/^\/calendar\/(\d{4}-\d{2})$/)) body = <CalendarPage month={path.match(/^\/calendar\/(\d{4}-\d{2})$/)[1]} />;
   else if (path === '/crops') body = <CropsPage />;
+  else if (path.match(/^\/crops\/(\d+)\/edit$/)) body = <CropEditPage id={path.match(/^\/crops\/(\d+)\/edit$/)[1]} />;
   else if (path.match(/^\/crops\/(\d+)$/)) body = <CropDetailPage id={path.match(/^\/crops\/(\d+)$/)[1]} />;
   else if (path === '/me') body = <MyPage />;
   else if (path === '/me/logs') body = <LogsPage />;

@@ -457,6 +457,108 @@ app.get('/api/crops/:id', authOptional, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// 작목 정보 보강 (회원 누구나 — 위키처럼 공동 편집)
+// ---------------------------------------------------------------------------
+app.put('/api/crops/:id/info', authRequired, async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    const exist = await pool.query(`SELECT id FROM ${T.crops} WHERE id = $1`, [id]);
+    if (!exist.rows[0]) return res.status(404).json({ success: false, message: '작목 없음' });
+
+    const b = req.body || {};
+    const ss = Number.parseInt(b.season_start_month, 10);
+    const se = Number.parseInt(b.season_end_month, 10);
+    if (!Number.isInteger(ss) || ss < 1 || ss > 12) return res.status(400).json({ success: false, message: '시즌 시작월 1~12' });
+    if (!Number.isInteger(se) || se < 1 || se > 12) return res.status(400).json({ success: false, message: '시즌 종료월 1~12' });
+    const wf = Number.parseInt(b.water_freq_days, 10);
+    if (!Number.isInteger(wf) || wf < 1 || wf > 30) return res.status(400).json({ success: false, message: '물주기 1~30일' });
+    if (b.category && !CROP_CATEGORIES.includes(b.category)) return res.status(400).json({ success: false, message: '카테고리 오류' });
+
+    const r = await pool.query(
+      `UPDATE ${T.crops}
+          SET category = COALESCE($1, category),
+              season_start_month = $2,
+              season_end_month = $3,
+              sunlight = $4,
+              water_freq_days = $5,
+              soil_pref = $6,
+              summary_md = $7,
+              hero_image_url = $8,
+              beginner_friendly = $9
+        WHERE id = $10
+        RETURNING *`,
+      [
+        b.category || null,
+        ss, se,
+        (b.sunlight || '').toString().slice(0, 30),
+        wf,
+        (b.soil_pref || '').toString().slice(0, 60),
+        (b.summary_md || '').toString().slice(0, 500),
+        (b.hero_image_url || '').toString().slice(0, 500),
+        !!b.beginner_friendly,
+        id,
+      ]
+    );
+    res.json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    console.error('update crop info failed:', err);
+    res.status(500).json({ success: false, message: '정보 수정 실패' });
+  }
+});
+
+app.post('/api/crops/:id/tasks', authRequired, async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    const exist = await pool.query(`SELECT id FROM ${T.crops} WHERE id = $1`, [id]);
+    if (!exist.rows[0]) return res.status(404).json({ success: false, message: '작목 없음' });
+
+    const b = req.body || {};
+    if (!TASK_TYPES.includes(b.task_type)) return res.status(400).json({ success: false, message: '작업 유형 선택' });
+    const m = Number.parseInt(b.month, 10);
+    if (!Number.isInteger(m) || m < 1 || m > 12) return res.status(400).json({ success: false, message: '월 1~12' });
+    let wim = Number.parseInt(b.week_in_month, 10);
+    if (!Number.isInteger(wim) || wim < 0 || wim > 5) wim = 0;
+
+    const r = await pool.query(
+      `INSERT INTO ${T.cropTasks}
+         (crop_id, task_type, month, week_in_month, instructions_md,
+          per_5pyeong_amount, per_10pyeong_amount, per_20pyeong_amount)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        id, b.task_type, m, wim,
+        (b.instructions_md || '').toString().slice(0, 300),
+        (b.per_5pyeong_amount || '').toString().slice(0, 30),
+        (b.per_10pyeong_amount || '').toString().slice(0, 30),
+        (b.per_20pyeong_amount || '').toString().slice(0, 30),
+      ]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    console.error('add crop task failed:', err);
+    res.status(500).json({ success: false, message: '작업 추가 실패' });
+  }
+});
+
+app.delete('/api/crops/:cropId/tasks/:taskId', authRequired, async (req, res) => {
+  try {
+    const cropId = Number.parseInt(req.params.cropId, 10);
+    const taskId = Number.parseInt(req.params.taskId, 10);
+    // 관리자만 삭제 가능 (스팸/실수 방지)
+    const me = await pool.query(`SELECT role FROM ${T.users} WHERE id = $1`, [req.userId]);
+    if (me.rows[0]?.role !== 'admin') {
+      return res.status(403).json({ success: false, message: '관리자만 작업 항목 삭제 가능' });
+    }
+    await pool.query(`DELETE FROM ${T.cropTasks} WHERE id = $1 AND crop_id = $2`, [taskId, cropId]);
+    res.json({ success: true, data: { id: taskId } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: '작업 삭제 실패' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Quick add crop (회원 누구나, 일지 작성 중 즉석 추가용)
 // ---------------------------------------------------------------------------
 app.post('/api/crops/quick', authRequired, async (req, res) => {
