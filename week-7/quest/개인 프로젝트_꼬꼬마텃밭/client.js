@@ -366,7 +366,9 @@ function HomePage() {
                   </div>
                   <div className="font-bold mt-1.5 truncate">{l.title}</div>
                   <div className="text-sm text-gray-600 line-clamp-2 mt-1">{l.body_md}</div>
-                  {l.crop_name && <div className="text-xs text-leaf-700 mt-1">🌱 {l.crop_name}</div>}
+                  {l.crops && l.crops.length > 0 && (
+                    <div className="text-xs text-leaf-700 mt-1 truncate">🌱 {l.crops.map((c) => c.name_ko).join(', ')}</div>
+                  )}
                 </a>
               </li>
             ))}
@@ -600,9 +602,9 @@ function LogsPage() {
           {items.map((l) => (
             <li key={l.id}>
               <a href={`#/logs/${l.id}`} className="block bg-white rounded-2xl border border-leaf-100 p-4 hover:border-leaf-300">
-                <div className="flex items-center gap-2 text-xs text-gray-500">
+                <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                   <span>{formatDate(l.log_date)}</span>
-                  {l.crop_name && <span>· 🌱 {l.crop_name}</span>}
+                  {l.crops && l.crops.length > 0 && <span>· 🌱 {l.crops.map((c) => c.name_ko).join(', ')}</span>}
                   <span className="ml-auto px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{l.visibility === 'private' ? '🔒 비공개' : l.visibility === 'friends' ? '👥 친구공개' : '🌐 전체공개'}</span>
                 </div>
                 <div className="font-bold mt-1">{l.title}</div>
@@ -660,7 +662,7 @@ function LogFormPage({ id }) {
   const { user, loading: authLoading } = useAuth();
   const isEdit = !!id;
   const [crops, setCrops] = useState([]);
-  const [crop_id, setCropId] = useState('');
+  const [cropIds, setCropIds] = useState([]); // 다중 선택
   const [log_date, setDate] = useState(formatDate(new Date()));
   const [title, setTitle] = useState(''); const [body_md, setBody] = useState('');
   const [images, setImages] = useState([]); const [mood, setMood] = useState('보통');
@@ -677,11 +679,17 @@ function LogFormPage({ id }) {
       try {
         const l = await api(`/api/logs/${id}`);
         if (l.user_id !== user?.id) { setErr('본인 일지만 수정 가능'); return; }
-        setCropId(l.crop_id || ''); setDate(formatDate(l.log_date)); setTitle(l.title);
+        const ids = Array.isArray(l.crops) && l.crops.length ? l.crops.map((c) => c.id) : (l.crop_id ? [l.crop_id] : []);
+        setCropIds(ids);
+        setDate(formatDate(l.log_date)); setTitle(l.title);
         setBody(l.body_md); setImages(l.image_urls || []); setMood(l.mood); setVis(l.visibility);
       } catch (e) { setErr(e.message); }
     })();
   }, [id, isEdit, user]);
+
+  const toggleCrop = (cid) => {
+    setCropIds((prev) => prev.includes(cid) ? prev.filter((x) => x !== cid) : [...prev, cid].slice(0, 10));
+  };
 
   const onPickFiles = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -703,7 +711,7 @@ function LogFormPage({ id }) {
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setBusy(true);
     try {
-      const payload = { crop_id: crop_id || null, log_date, title, body_md, image_urls: images, mood, visibility };
+      const payload = { crop_ids: cropIds, log_date, title, body_md, image_urls: images, mood, visibility };
       if (isEdit) {
         await api(`/api/logs/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
         navigate(`/logs/${id}`);
@@ -726,11 +734,20 @@ function LogFormPage({ id }) {
       <h1 className="text-2xl font-bold mb-4">{isEdit ? '일지 수정' : '오늘 텃밭 어땠어요?'}</h1>
       <form onSubmit={submit} className="space-y-3">
         <Field label="날짜"><input type="date" required className="input" value={log_date} onChange={(e)=>setDate(e.target.value)} /></Field>
-        <Field label="작목 (선택)">
-          <select className="input" value={crop_id} onChange={(e)=>setCropId(e.target.value)}>
-            <option value="">— 선택 안 함 —</option>
-            {crops.map(c => <option key={c.id} value={c.id}>{c.name_ko}</option>)}
-          </select>
+        <Field label={`작목 (선택, 여러 개 가능 — ${cropIds.length}개 선택됨)`} hint="필요한 작목을 모두 눌러주세요. 다시 누르면 해제돼요.">
+          <div className="flex flex-wrap gap-1.5">
+            {crops.map((c) => {
+              const active = cropIds.includes(c.id);
+              return (
+                <button
+                  type="button" key={c.id} onClick={() => toggleCrop(c.id)}
+                  className={`px-3 h-9 rounded-full text-sm border transition ${active ? 'bg-leaf-500 text-white border-leaf-500' : 'bg-white border-leaf-200 text-gray-700 hover:border-leaf-400'}`}
+                >
+                  {active && '✓ '}{c.name_ko}
+                </button>
+              );
+            })}
+          </div>
         </Field>
         <Field label="제목"><input required maxLength={80} className="input" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="예: 상추 첫 모종 심기" /></Field>
         <Field label="내용 (자유롭게)"><textarea rows={6} maxLength={4000} className="input" value={body_md} onChange={(e)=>setBody(e.target.value)} placeholder="비 와서 풀이 무성했어요 ☔ 다음주 풀뽑기부터..." /></Field>
@@ -810,7 +827,15 @@ function LogDetailPage({ id }) {
             <span className="text-xs text-gray-400 ml-auto">{formatDate(l.log_date)} · {l.mood}</span>
           </div>
           <h1 className="text-xl font-bold mt-2">{l.title}</h1>
-          {l.crop_name && <div className="text-xs text-leaf-700 mt-1">🌱 {l.crop_name}</div>}
+          {l.crops && l.crops.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {l.crops.map((c) => (
+                <a key={c.id} href={`#/crops/${c.id}`} className="text-xs px-2 py-0.5 rounded-full bg-leaf-50 text-leaf-700 hover:bg-leaf-100">
+                  🌱 {c.name_ko}
+                </a>
+              ))}
+            </div>
+          )}
           <p className="mt-3 text-gray-800 prose-mini">{l.body_md}</p>
           {isOwner && (
             <div className="mt-5 flex gap-2">

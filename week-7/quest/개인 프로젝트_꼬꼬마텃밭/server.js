@@ -19,6 +19,7 @@ const T = {
   cropTasks: `${PFX}crop_tasks`,
   userCrops: `${PFX}user_crops`,
   logs: `${PFX}logs`,
+  logCrops: `${PFX}log_crops`,
   budgets: `${PFX}budgets`,
   posts: `${PFX}posts`,
   comments: `${PFX}comments`,
@@ -38,6 +39,26 @@ const TASK_TYPES = ['모종', '시비', '관수', '수확', '풀뽑기', '병해
 const BOARD_LIST = ['질문', '자랑', '정보', '자유'];
 const BUDGET_CATEGORIES = ['모종/씨앗', '비료/퇴비', '농약', '도구', '임차료', '운반비', '기타'];
 const VISIBILITY = ['private', 'friends', 'public'];
+
+// 입력에서 crop_ids 배열 정규화 (구버전 crop_id 단일 필드도 호환)
+function normalizeCropIds(body) {
+  const arr = Array.isArray(body?.crop_ids) ? body.crop_ids
+            : (body?.crop_id != null ? [body.crop_id] : []);
+  const ids = arr
+    .map((v) => Number.parseInt(v, 10))
+    .filter((n) => Number.isInteger(n) && n > 0);
+  return [...new Set(ids)].slice(0, 10);
+}
+
+async function setLogCrops(client, logId, cropIds) {
+  await client.query(`DELETE FROM ${T.logCrops} WHERE log_id = $1`, [logId]);
+  for (const cid of cropIds) {
+    await client.query(
+      `INSERT INTO ${T.logCrops} (log_id, crop_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [logId, cid]
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // DB Schema (lazy init)
@@ -123,6 +144,20 @@ async function initDB() {
     );
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS ${T.logs}_user_date_idx ON ${T.logs}(user_id, log_date DESC);`);
+  // 일지 ↔ 작목 다대다 (다중 작목 선택)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${T.logCrops} (
+      log_id BIGINT NOT NULL REFERENCES ${T.logs}(id) ON DELETE CASCADE,
+      crop_id BIGINT NOT NULL REFERENCES ${T.crops}(id) ON DELETE CASCADE,
+      PRIMARY KEY (log_id, crop_id)
+    );
+  `);
+  // 기존 logs.crop_id (단일) 데이터를 정션으로 일회 이관
+  await pool.query(`
+    INSERT INTO ${T.logCrops} (log_id, crop_id)
+    SELECT id, crop_id FROM ${T.logs} WHERE crop_id IS NOT NULL
+    ON CONFLICT DO NOTHING;
+  `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${T.budgets} (
       id BIGSERIAL PRIMARY KEY,
@@ -557,13 +592,22 @@ app.delete('/api/me/crops/:id', authRequired, async (req, res) => {
 app.get('/api/me/logs', authRequired, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT l.*, c.name_ko AS crop_name
-         FROM ${T.logs} l LEFT JOIN ${T.crops} c ON c.id = l.crop_id
-        WHERE l.user_id = $1 ORDER BY l.log_date DESC, l.id DESC LIMIT 200`,
+      `SELECT l.*,
+              COALESCE(
+                (SELECT json_agg(json_build_object('id', c.id, 'name_ko', c.name_ko) ORDER BY c.name_ko)
+                   FROM ${T.logCrops} lc
+                   JOIN ${T.crops} c ON c.id = lc.crop_id
+                  WHERE lc.log_id = l.id),
+                '[]'::json
+              ) AS crops
+         FROM ${T.logs} l
+        WHERE l.user_id = $1
+        ORDER BY l.log_date DESC, l.id DESC LIMIT 200`,
       [req.userId]
     );
     res.json({ success: true, data: r.rows });
-  } catch {
+  } catch (err) {
+    console.error('me logs failed:', err);
     res.status(500).json({ success: false, message: '일지 목록 실패' });
   }
 });
@@ -573,8 +617,16 @@ app.get('/api/logs/:id', authOptional, async (req, res) => {
     const id = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
     const r = await pool.query(
-      `SELECT l.*, c.name_ko AS crop_name, u.display_name, u.avatar_emoji
-         FROM ${T.logs} l LEFT JOIN ${T.crops} c ON c.id = l.crop_id
+      `SELECT l.*,
+              u.display_name, u.avatar_emoji,
+              COALESCE(
+                (SELECT json_agg(json_build_object('id', c.id, 'name_ko', c.name_ko) ORDER BY c.name_ko)
+                   FROM ${T.logCrops} lc
+                   JOIN ${T.crops} c ON c.id = lc.crop_id
+                  WHERE lc.log_id = l.id),
+                '[]'::json
+              ) AS crops
+         FROM ${T.logs} l
          JOIN ${T.users} u ON u.id = l.user_id
         WHERE l.id = $1`,
       [id]
@@ -585,25 +637,29 @@ app.get('/api/logs/:id', authOptional, async (req, res) => {
       return res.status(403).json({ success: false, message: '비공개 일지예요' });
     }
     res.json({ success: true, data: log });
-  } catch {
+  } catch (err) {
+    console.error('log detail failed:', err);
     res.status(500).json({ success: false, message: '일지 상세 실패' });
   }
 });
 
 app.post('/api/logs', authRequired, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { crop_id, log_date, title, body_md, image_urls, weather, mood, visibility } = req.body || {};
+    const { log_date, title, body_md, image_urls, weather, mood, visibility } = req.body || {};
     const t = (title || '').toString().trim();
     if (!t) return res.status(400).json({ success: false, message: '제목을 적어주세요' });
     const vis = VISIBILITY.includes(visibility) ? visibility : 'private';
     const imgs = Array.isArray(image_urls) ? image_urls.filter((u) => typeof u === 'string').slice(0, 5) : [];
-    const cid = crop_id ? Number.parseInt(crop_id, 10) : null;
-    const r = await pool.query(
+    const cropIds = normalizeCropIds(req.body);
+
+    await client.query('BEGIN');
+    const r = await client.query(
       `INSERT INTO ${T.logs} (user_id, crop_id, log_date, title, body_md, image_urls, weather, mood, visibility)
        VALUES ($1, $2, COALESCE($3::date, CURRENT_DATE), $4, $5, $6::jsonb, $7, $8, $9)
        RETURNING *`,
       [
-        req.userId, cid, log_date || null,
+        req.userId, cropIds[0] || null, log_date || null,
         t.slice(0, 80), (body_md || '').toString().slice(0, 4000),
         JSON.stringify(imgs),
         (weather || '').toString().slice(0, 20),
@@ -611,41 +667,70 @@ app.post('/api/logs', authRequired, async (req, res) => {
         vis,
       ]
     );
-    res.status(201).json({ success: true, data: r.rows[0] });
+    const log = r.rows[0];
+    await setLogCrops(client, log.id, cropIds);
+    await client.query('COMMIT');
+
+    // crops 배열까지 함께 반환
+    const cropRows = await pool.query(
+      `SELECT c.id, c.name_ko FROM ${T.logCrops} lc JOIN ${T.crops} c ON c.id = lc.crop_id
+        WHERE lc.log_id = $1 ORDER BY c.name_ko`,
+      [log.id]
+    );
+    res.status(201).json({ success: true, data: { ...log, crops: cropRows.rows } });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('create log failed:', err);
     res.status(500).json({ success: false, message: '일지 작성 실패' });
+  } finally {
+    client.release();
   }
 });
 
 app.put('/api/logs/:id', authRequired, async (req, res) => {
+  const client = await pool.connect();
   try {
     const id = Number.parseInt(req.params.id, 10);
-    const own = await pool.query(`SELECT user_id FROM ${T.logs} WHERE id = $1`, [id]);
+    const own = await client.query(`SELECT user_id FROM ${T.logs} WHERE id = $1`, [id]);
     if (!own.rows[0]) return res.status(404).json({ success: false, message: '일지 없음' });
     if (own.rows[0].user_id !== req.userId) return res.status(403).json({ success: false, message: '본인 일지만 수정 가능' });
 
-    const { crop_id, log_date, title, body_md, image_urls, weather, mood, visibility } = req.body || {};
+    const { log_date, title, body_md, image_urls, weather, mood, visibility } = req.body || {};
     const t = (title || '').toString().trim();
     if (!t) return res.status(400).json({ success: false, message: '제목 필요' });
     const vis = VISIBILITY.includes(visibility) ? visibility : 'private';
     const imgs = Array.isArray(image_urls) ? image_urls.filter((u) => typeof u === 'string').slice(0, 5) : [];
-    const cid = crop_id ? Number.parseInt(crop_id, 10) : null;
-    const r = await pool.query(
+    const cropIds = normalizeCropIds(req.body);
+
+    await client.query('BEGIN');
+    const r = await client.query(
       `UPDATE ${T.logs}
           SET crop_id = $1, log_date = COALESCE($2::date, log_date),
               title = $3, body_md = $4, image_urls = $5::jsonb,
               weather = $6, mood = $7, visibility = $8, updated_at = NOW()
         WHERE id = $9 RETURNING *`,
       [
-        cid, log_date || null, t.slice(0, 80), (body_md || '').toString().slice(0, 4000),
+        cropIds[0] || null, log_date || null, t.slice(0, 80),
+        (body_md || '').toString().slice(0, 4000),
         JSON.stringify(imgs), (weather || '').toString().slice(0, 20),
         ['좋음', '보통', '힘듦'].includes(mood) ? mood : '보통', vis, id,
       ]
     );
-    res.json({ success: true, data: r.rows[0] });
+    await setLogCrops(client, id, cropIds);
+    await client.query('COMMIT');
+
+    const cropRows = await pool.query(
+      `SELECT c.id, c.name_ko FROM ${T.logCrops} lc JOIN ${T.crops} c ON c.id = lc.crop_id
+        WHERE lc.log_id = $1 ORDER BY c.name_ko`,
+      [id]
+    );
+    res.json({ success: true, data: { ...r.rows[0], crops: cropRows.rows } });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('update log failed:', err);
     res.status(500).json({ success: false, message: '일지 수정 실패' });
+  } finally {
+    client.release();
   }
 });
 
@@ -669,15 +754,23 @@ app.get('/api/logs/public/feed', authOptional, async (_req, res) => {
   try {
     const r = await pool.query(
       `SELECT l.id, l.title, l.log_date, l.image_urls, l.body_md, l.mood,
-              c.name_ko AS crop_name, u.display_name, u.avatar_emoji
-         FROM ${T.logs} l LEFT JOIN ${T.crops} c ON c.id = l.crop_id
+              u.display_name, u.avatar_emoji,
+              COALESCE(
+                (SELECT json_agg(json_build_object('id', c.id, 'name_ko', c.name_ko) ORDER BY c.name_ko)
+                   FROM ${T.logCrops} lc
+                   JOIN ${T.crops} c ON c.id = lc.crop_id
+                  WHERE lc.log_id = l.id),
+                '[]'::json
+              ) AS crops
+         FROM ${T.logs} l
          JOIN ${T.users} u ON u.id = l.user_id
         WHERE l.visibility = 'public'
         ORDER BY l.log_date DESC, l.id DESC
         LIMIT 50`
     );
     res.json({ success: true, data: r.rows });
-  } catch {
+  } catch (err) {
+    console.error('public feed failed:', err);
     res.status(500).json({ success: false, message: '공개 일지 실패' });
   }
 });
