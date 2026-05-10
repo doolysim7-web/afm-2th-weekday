@@ -95,6 +95,28 @@
 
 ---
 
+## 새 작목 즉석 추가 테스트 (커밋 `f3986db`)
+
+| # | 시나리오 | 결과 | 캡처 |
+|---|---|---|---|
+| 39 | 폼 펼침 — `+ 새 작목` dashed 버튼 클릭 시 인라인 폼 노출 | ✅ | `39-quickadd-form-open.png` |
+| 40 | 작목명 + 카테고리 입력 (바질 / 허브) | ✅ | `40-quickadd-filled.png` |
+| 41 | 추가 → "✓ 바질" 칩 자동 활성 + "1개 선택됨" | ✅ | `41-quickadd-result.png` |
+| 42 | 빈 입력일 때 "+ 추가" 버튼 disabled | ✅ disabled=true | `42-quickadd-empty-disabled.png` |
+| 43 | 같은 이름 재시도 → reused (중복 칩 X, 기존 칩 ✓ 활성) | ✅ basilCount=1 | `43-quickadd-reused.png` |
+| 44 | 새 작목 두 개(바질·옥수수)로 일지 저장 → 상세에서 칩 링크 | ✅ 작목 칩 2개, 클릭 시 `#/crops/:id`로 이동 | `44-quickadd-log-detail.png` |
+| 45 | 작목 가이드 그리드에 들깨/바질/옥수수 노출, hero 없으면 🌱 폴백 | ✅ 13→15개 카드 노출 | `45-quickadd-crops-grid.png` |
+
+### 핵심 검증
+
+- **회원 권한으로 작목 등록**: `POST /api/crops/quick`은 admin이 아닌 일반 회원도 가능 — 일지 작성 흐름을 끊지 않기 위해
+- **중복 방지**: 같은 `name_ko`가 있으면 새 row를 만들지 않고 기존 row 반환 (`reused: true`)
+- **자동 토글**: 추가 직후 그 작목이 칩으로 push되고 `cropIds`에도 push되어 ✓ 표시
+- **Sane defaults**: season 1~12, water 2일, hero 비움 (그리드는 🌱 폴백) → 향후 admin이 가이드 보강
+- **그리드 호환**: hero 없는 카드는 폴백 아이콘으로 자연스럽게 노출됨
+
+---
+
 ## 대시보드 모달 체크박스 추가 테스트 (커밋 `2a8b115`)
 
 | # | 시나리오 | 결과 | 캡처 |
