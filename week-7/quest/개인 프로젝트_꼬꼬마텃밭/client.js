@@ -146,8 +146,12 @@ function Header() {
                   <span>👑</span><span className="hidden sm:inline">관리자</span>
                 </a>
               )}
-              <a href="#/me/logs" className="px-2 py-1 rounded-md hover:bg-leaf-50">📔</a>
-              <a href="#/me/budget" className="px-2 py-1 rounded-md hover:bg-leaf-50">💰</a>
+              <a href="#/me/logs" className="px-2 py-1.5 rounded-md hover:bg-leaf-50 flex items-center gap-1">
+                <span>📔</span><span className="hidden lg:inline">내 일지</span>
+              </a>
+              <a href="#/me/budget" className="px-2 py-1.5 rounded-md hover:bg-leaf-50 flex items-center gap-1">
+                <span>💰</span><span className="hidden lg:inline">가계부</span>
+              </a>
               <a href="#/logs/new" className="px-3 py-1.5 rounded-md bg-leaf-500 text-white font-semibold hover:bg-leaf-600">+ 일지</a>
               <a href="#/me" className="px-2 py-1.5 rounded-md hover:bg-leaf-50 flex items-center gap-1">
                 <span className="text-base">{user.avatar_emoji}</span>
@@ -166,6 +170,7 @@ function Header() {
       <nav className="md:hidden flex items-center gap-0 text-xs border-t border-leaf-100 bg-white">
         <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/calendar">📅 캘린더</a>
         <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/crops">🌿 작목</a>
+        {user && <a className="flex-1 text-center py-2 hover:bg-leaf-50 font-semibold text-leaf-700" href="#/me/logs">📔 내 일지</a>}
         <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/board">💬 게시판</a>
         <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/feed">🌸 피드</a>
       </nav>
@@ -583,29 +588,48 @@ function LogsPage() {
   const { user, loading } = useAuth();
   const [items, setItems] = useState([]); const [err, setErr] = useState('');
   useEffect(() => { if (!loading && !user) navigate('/login'); }, [loading, user]);
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!user) return;
-    (async () => { try { setItems(await api('/api/me/logs')); } catch (e) { setErr(e.message); } })();
+    try { setItems(await api('/api/me/logs')); } catch (e) { setErr(e.message); }
   }, [user]);
+  useEffect(() => { load(); }, [load]);
+
+  const onDelete = async (e, id, title) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!confirm(`"${title}" 일지를 정말 삭제할까요?`)) return;
+    try { await api(`/api/logs/${id}`, { method: 'DELETE' }); await load(); }
+    catch (ex) { alert(ex.message); }
+  };
+
   if (!user) return null;
   return (
     <div className="max-w-3xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">📔 내 일지</h1>
+        <div>
+          <h1 className="text-2xl font-bold">📔 내 일지</h1>
+          <p className="text-sm text-gray-500 mt-0.5">총 {items.length}개</p>
+        </div>
         <a href="#/logs/new" className="btn-primary text-sm">+ 일지 쓰기</a>
       </div>
-      {err && <div className="text-red-600 text-sm">{err}</div>}
+      {err && <div className="text-red-600 text-sm mb-2">{err}</div>}
       {items.length === 0 ? (
-        <EmptyState icon="📔" title="아직 일지가 없어요" sub="이번 주말 사진 한 장과 한 줄로 남겨보세요" />
+        <EmptyState
+          icon="📔"
+          title="아직 일지가 없어요"
+          sub="이번 주말 사진 한 장과 한 줄로 남겨보세요"
+          action={<a href="#/logs/new" className="inline-block mt-3 btn-primary text-sm">+ 첫 일지 쓰기</a>}
+        />
       ) : (
         <ul className="space-y-3">
           {items.map((l) => (
-            <li key={l.id}>
-              <a href={`#/logs/${l.id}`} className="block bg-white rounded-2xl border border-leaf-100 p-4 hover:border-leaf-300">
+            <li key={l.id} className="relative bg-white rounded-2xl border border-leaf-100 hover:border-leaf-300 transition group">
+              <a href={`#/logs/${l.id}`} className="block p-4 pr-24">
                 <div className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                   <span>{formatDate(l.log_date)}</span>
                   {l.crops && l.crops.length > 0 && <span>· 🌱 {l.crops.map((c) => c.name_ko).join(', ')}</span>}
-                  <span className="ml-auto px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{l.visibility === 'private' ? '🔒 비공개' : l.visibility === 'friends' ? '👥 친구공개' : '🌐 전체공개'}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                    {l.visibility === 'private' ? '🔒 비공개' : l.visibility === 'friends' ? '👥 친구공개' : '🌐 전체공개'}
+                  </span>
                 </div>
                 <div className="font-bold mt-1">{l.title}</div>
                 <div className="text-sm text-gray-700 line-clamp-2 mt-1">{l.body_md}</div>
@@ -615,6 +639,16 @@ function LogsPage() {
                   </div>
                 )}
               </a>
+              <div className="absolute top-3 right-3 flex gap-1">
+                <a href={`#/logs/${l.id}/edit`}
+                  className="px-2 py-1 rounded-md text-xs bg-leaf-50 text-leaf-700 hover:bg-leaf-100 border border-leaf-200">
+                  ✎ 수정
+                </a>
+                <button onClick={(e) => onDelete(e, l.id, l.title)}
+                  className="px-2 py-1 rounded-md text-xs bg-red-50 text-red-600 hover:bg-red-100 border border-red-200">
+                  ✕ 삭제
+                </button>
+              </div>
             </li>
           ))}
         </ul>
@@ -1230,9 +1264,17 @@ function PostDetailPage({ id }) {
 // ---------------------------------------------------------------------------
 function MyPage() {
   const { user, loading, setUser } = useAuth();
-  const [myCrops, setMyCrops] = useState([]); const [editing, setEditing] = useState(false);
+  const [myCrops, setMyCrops] = useState([]);
+  const [recentLogs, setRecentLogs] = useState([]);
+  const [editing, setEditing] = useState(false);
   useEffect(() => { if (!loading && !user) navigate('/login'); }, [loading, user]);
-  const load = async () => { try { setMyCrops(await api('/api/me/crops')); } catch {} };
+  const load = async () => {
+    try {
+      const [c, l] = await Promise.all([api('/api/me/crops'), api('/api/me/logs')]);
+      setMyCrops(c);
+      setRecentLogs((l || []).slice(0, 3));
+    } catch {}
+  };
   useEffect(() => { if (user) load(); }, [user]);
   const removeCrop = async (id) => {
     if (!confirm('내 작물에서 빼낼까요?')) return;
@@ -1290,6 +1332,37 @@ function MyPage() {
           <div className="text-2xl">💰</div>
           <div className="font-semibold mt-1">가계부</div>
         </a>
+      </div>
+
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-bold">📔 최근 일지</h2>
+          <div className="flex gap-2">
+            <a href="#/logs/new" className="text-sm text-leaf-700 font-semibold">+ 쓰기</a>
+            <span className="text-gray-300">·</span>
+            <a href="#/me/logs" className="text-sm text-leaf-700 font-semibold">전체 보기 →</a>
+          </div>
+        </div>
+        {recentLogs.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-leaf-100 p-6 text-center text-gray-500 text-sm">
+            아직 일지가 없어요. 첫 일지를 남겨보세요 🌱
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {recentLogs.map((l) => (
+              <li key={l.id}>
+                <a href={`#/logs/${l.id}`} className="block bg-white rounded-2xl border border-leaf-100 p-3 hover:border-leaf-300">
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span>{formatDate(l.log_date)}</span>
+                    {l.crops && l.crops.length > 0 && <span>· 🌱 {l.crops.map((c) => c.name_ko).join(', ')}</span>}
+                    <span className="ml-auto">{l.visibility === 'private' ? '🔒' : l.visibility === 'friends' ? '👥' : '🌐'}</span>
+                  </div>
+                  <div className="font-semibold mt-0.5 truncate">{l.title}</div>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );
