@@ -1,6 +1,15 @@
 # 당근마켓 클론 🥕
 
+🔗 **Live**: https://carrot-market-clone-gray.vercel.app
+
 이메일 가입(JWT) → 상품 등록(이미지 업로드) → 목록/검색/상세 → 1:1 채팅(폴링) → 마이페이지로 이어지는 핵심 흐름을 한 폴더 안에 구현한 미니 중고거래 앱입니다.
+
+## 테스트 계정
+
+| 역할 | 이메일 | 비밀번호 |
+|---|---|---|
+| 👑 관리자 | `admin@carrot.test` | `admin1234` |
+| 판매자 | `minji@carrot.test` / `jihoon@carrot.test` / `soyeon@carrot.test` | `carrot123` |
 
 ## 기술 스택
 
