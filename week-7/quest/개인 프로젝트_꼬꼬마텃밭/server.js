@@ -457,6 +457,47 @@ app.get('/api/crops/:id', authOptional, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Quick add crop (회원 누구나, 일지 작성 중 즉석 추가용)
+// ---------------------------------------------------------------------------
+app.post('/api/crops/quick', authRequired, async (req, res) => {
+  try {
+    const name = (req.body?.name_ko || '').toString().trim();
+    const category = (req.body?.category || '기타').toString();
+    if (!name) return res.status(400).json({ success: false, message: '작목명을 적어주세요' });
+    if (name.length > 20) return res.status(400).json({ success: false, message: '작목명은 20자 이하' });
+    const cat = CROP_CATEGORIES.includes(category) ? category : '기타';
+
+    // 이미 같은 이름이 있으면 그대로 반환 (중복 추가 방지)
+    const exist = await pool.query(
+      `SELECT id, name_ko, name_en, category, season_start_month, season_end_month,
+              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly
+         FROM ${T.crops} WHERE name_ko = $1`,
+      [name]
+    );
+    if (exist.rows[0]) {
+      return res.json({ success: true, data: { ...exist.rows[0], reused: true } });
+    }
+    const r = await pool.query(
+      `INSERT INTO ${T.crops}
+         (name_ko, name_en, category, season_start_month, season_end_month,
+          sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly)
+       VALUES ($1, '', $2, 1, 12, '', 2, '', $3, '', FALSE)
+       RETURNING id, name_ko, name_en, category, season_start_month, season_end_month,
+                 sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly`,
+      [name, cat, `${req.userId}님이 직접 추가한 작목입니다. 가이드는 추후 추가될 예정이에요.`]
+    );
+    res.status(201).json({ success: true, data: r.rows[0] });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ success: false, message: '이미 같은 이름의 작목이 있어요' });
+    console.error('quick add crop failed:', err);
+    res.status(500).json({ success: false, message: '작목 추가 실패' });
+  }
+});
+
+// CROP_CATEGORIES enum 노출 (프론트에서 사용)
+// (이미 /api/categories에 포함되어 있음)
+
+// ---------------------------------------------------------------------------
 // Calendar (public)
 // ---------------------------------------------------------------------------
 app.get('/api/calendar', authOptional, async (req, res) => {

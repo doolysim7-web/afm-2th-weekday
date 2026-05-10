@@ -691,6 +691,29 @@ function LogFormPage({ id }) {
     setCropIds((prev) => prev.includes(cid) ? prev.filter((x) => x !== cid) : [...prev, cid].slice(0, 10));
   };
 
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickCat, setQuickCat] = useState('기타');
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickErr, setQuickErr] = useState('');
+  const handleQuickAdd = async () => {
+    setQuickErr('');
+    const n = quickName.trim();
+    if (!n) { setQuickErr('작목명을 적어주세요'); return; }
+    setQuickBusy(true);
+    try {
+      const created = await api('/api/crops/quick', {
+        method: 'POST',
+        body: JSON.stringify({ name_ko: n, category: quickCat }),
+      });
+      // 목록에 없으면 추가, 자동 토글 ON
+      setCrops((prev) => prev.find((c) => c.id === created.id) ? prev : [...prev, created]);
+      setCropIds((prev) => prev.includes(created.id) ? prev : [...prev, created.id].slice(0, 10));
+      setQuickName(''); setQuickCat('기타'); setShowQuickAdd(false);
+    } catch (e) { setQuickErr(e.message); }
+    finally { setQuickBusy(false); }
+  };
+
   const onPickFiles = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -734,7 +757,7 @@ function LogFormPage({ id }) {
       <h1 className="text-2xl font-bold mb-4">{isEdit ? '일지 수정' : '오늘 텃밭 어땠어요?'}</h1>
       <form onSubmit={submit} className="space-y-3">
         <Field label="날짜"><input type="date" required className="input" value={log_date} onChange={(e)=>setDate(e.target.value)} /></Field>
-        <Field label={`작목 (선택, 여러 개 가능 — ${cropIds.length}개 선택됨)`} hint="필요한 작목을 모두 눌러주세요. 다시 누르면 해제돼요.">
+        <Field label={`작목 (선택, 여러 개 가능 — ${cropIds.length}개 선택됨)`} hint="필요한 작목을 모두 눌러주세요. 다시 누르면 해제돼요. 없으면 + 새 작목으로 추가할 수 있어요.">
           <div className="flex flex-wrap gap-1.5">
             {crops.map((c) => {
               const active = cropIds.includes(c.id);
@@ -747,7 +770,43 @@ function LogFormPage({ id }) {
                 </button>
               );
             })}
+            {!showQuickAdd && (
+              <button
+                type="button" onClick={() => setShowQuickAdd(true)}
+                className="px-3 h-9 rounded-full text-sm border border-dashed border-leaf-400 text-leaf-700 hover:bg-leaf-50"
+              >+ 새 작목</button>
+            )}
           </div>
+          {showQuickAdd && (
+            <div className="mt-2 bg-leaf-50 rounded-xl p-3 border border-leaf-100">
+              <div className="text-xs text-gray-600 mb-2">목록에 없는 작목을 추가할게요. 작목명만 적으셔도 돼요 🌱</div>
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  className="input flex-1 min-w-[140px]"
+                  placeholder="예: 들깨, 바질, 옥수수 …"
+                  maxLength={20}
+                  value={quickName}
+                  onChange={(e) => setQuickName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      handleQuickAdd();
+                    }
+                  }}
+                />
+                <select className="input flex-none w-32" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
+                  {['엽채','과채','근채','곡류','허브','기타'].map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              {quickErr && <div className="text-xs text-red-600 mt-2">{quickErr}</div>}
+              <div className="flex gap-2 mt-2">
+                <button type="button" onClick={handleQuickAdd} disabled={quickBusy || !quickName.trim()}
+                  className="btn-primary text-sm flex-1">{quickBusy ? '추가 중…' : '+ 추가'}</button>
+                <button type="button" onClick={() => { setShowQuickAdd(false); setQuickName(''); setQuickErr(''); }}
+                  className="btn-ghost text-sm">취소</button>
+              </div>
+            </div>
+          )}
         </Field>
         <Field label="제목"><input required maxLength={80} className="input" value={title} onChange={(e)=>setTitle(e.target.value)} placeholder="예: 상추 첫 모종 심기" /></Field>
         <Field label="내용 (자유롭게)"><textarea rows={6} maxLength={4000} className="input" value={body_md} onChange={(e)=>setBody(e.target.value)} placeholder="비 와서 풀이 무성했어요 ☔ 다음주 풀뽑기부터..." /></Field>
