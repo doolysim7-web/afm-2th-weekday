@@ -1,5 +1,7 @@
 # 꼬꼬마텃밭 🌱 (LittleFarm)
 
+🔗 **Live**: https://little-farm-ten.vercel.app
+
 > 주말농장러를 위한 따뜻한 텃밭 동반자. 1년 캘린더 · 작목 가이드(5/10/20평 환산) · 일지 · 가계부 · 게시판.
 
 📄 기획 문서: [MISSION.md](./MISSION.md) · [AUDIENCES.md](./AUDIENCES.md) · [DEV.md](./DEV.md)
