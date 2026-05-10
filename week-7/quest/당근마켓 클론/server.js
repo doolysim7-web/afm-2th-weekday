@@ -715,6 +715,38 @@ app.post('/api/rooms/:id/messages', authRequired, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// 특정 상품에 대한 문의 채팅방 목록 (판매자만 — 본인 상품 한정)
+// ---------------------------------------------------------------------------
+app.get('/api/products/:id/rooms', authRequired, async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    const p = await pool.query(`SELECT user_id FROM ${T.products} WHERE id = $1`, [id]);
+    if (!p.rows[0]) return res.status(404).json({ success: false, message: '상품 없음' });
+    if (p.rows[0].user_id !== req.userId) {
+      const me = await pool.query(`SELECT is_admin FROM ${T.users} WHERE id = $1`, [req.userId]);
+      if (!me.rows[0]?.is_admin) return res.status(403).json({ success: false, message: '본인 상품의 문의만 조회 가능' });
+    }
+    const r = await pool.query(
+      `SELECT r.id, r.product_id, r.buyer_id, r.seller_id, r.created_at,
+              ub.nickname AS buyer_nickname, ub.avatar_emoji AS buyer_avatar,
+              (SELECT text FROM ${T.messages} WHERE room_id = r.id ORDER BY id DESC LIMIT 1) AS last_text,
+              (SELECT created_at FROM ${T.messages} WHERE room_id = r.id ORDER BY id DESC LIMIT 1) AS last_at,
+              (SELECT COUNT(*)::int FROM ${T.messages} WHERE room_id = r.id) AS message_count
+         FROM ${T.rooms} r
+         JOIN ${T.users} ub ON ub.id = r.buyer_id
+        WHERE r.product_id = $1
+        ORDER BY COALESCE((SELECT created_at FROM ${T.messages} WHERE room_id = r.id ORDER BY id DESC LIMIT 1), r.created_at) DESC`,
+      [id]
+    );
+    res.json({ success: true, data: r.rows });
+  } catch (err) {
+    console.error('product rooms failed:', err);
+    res.status(500).json({ success: false, message: '문의 목록 실패' });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Admin (전용)
 // ---------------------------------------------------------------------------
 app.get('/api/admin/stats', authRequired, adminRequired, async (_req, res) => {

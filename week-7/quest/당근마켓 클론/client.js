@@ -146,6 +146,10 @@ function Header() {
                 </a>
               )}
               <a href="#/products/new" className="px-3 py-1.5 rounded-md bg-carrot-500 text-white font-semibold hover:bg-carrot-600">+ 등록</a>
+              <a href="#/rooms" title="채팅" className="px-2 py-1.5 rounded-md hover:bg-gray-100 flex items-center gap-1">
+                <span className="text-base">💬</span>
+                <span className="hidden sm:inline">채팅</span>
+              </a>
               <a href="#/me" className="px-2 py-1.5 rounded-md hover:bg-gray-100 flex items-center gap-1">
                 <span className="text-base">{user.avatar_emoji || '🥕'}</span>
                 <span className="hidden sm:inline">{user.nickname}</span>
@@ -544,6 +548,7 @@ function ProductDetailPage({ id }) {
   const [imgIdx, setImgIdx] = useState(0);
   const [favBusy, setFavBusy] = useState(false);
   const [chatBusy, setChatBusy] = useState(false);
+  const [productRooms, setProductRooms] = useState([]);
 
   const load = useCallback(async () => {
     try { setP(await api(`/api/products/${id}`)); }
@@ -551,6 +556,19 @@ function ProductDetailPage({ id }) {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!p || !user) return;
+    if (!(p.is_owner || p.can_modify)) { setProductRooms([]); return; }
+    let alive = true;
+    (async () => {
+      try {
+        const rooms = await api(`/api/products/${id}/rooms`);
+        if (alive) setProductRooms(rooms);
+      } catch { /* swallow */ }
+    })();
+    return () => { alive = false; };
+  }, [p, user, id]);
 
   const toggleFav = async () => {
     if (!user) { navigate('/login'); return; }
@@ -622,8 +640,46 @@ function ProductDetailPage({ id }) {
         <p className="mt-4 text-gray-800 whitespace-pre-wrap leading-relaxed">{p.description || ' '}</p>
         <div className="text-sm text-gray-500 mt-6 flex gap-4">
           <span>❤️ 관심 {p.favorite_count}</span>
+          {(p.is_owner || p.can_modify) && (
+            <span>💬 문의 {productRooms.length}</span>
+          )}
         </div>
       </div>
+
+      {(p.is_owner || p.can_modify) && (
+        <div className="mt-2 bg-white px-4 py-4 border-t border-gray-100">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-bold flex items-center gap-1.5">
+              <span>💬</span><span>이 상품에 온 문의</span>
+              <span className="text-sm text-gray-500 font-normal">({productRooms.length})</span>
+            </h2>
+          </div>
+          {productRooms.length === 0 ? (
+            <div className="text-sm text-gray-400 py-6 text-center">아직 도착한 문의가 없어요</div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {productRooms.map((r) => (
+                <li key={r.id}>
+                  <a href={`#/rooms/${r.id}`} className="flex gap-3 py-3 hover:bg-gray-50 rounded-lg px-2">
+                    <div className="w-11 h-11 rounded-full bg-carrot-100 flex items-center justify-center text-2xl shrink-0">{r.buyer_avatar}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold truncate">{r.buyer_nickname}</span>
+                        <span className="text-xs text-gray-400">{formatTimeAgo(r.last_at || r.created_at)}</span>
+                      </div>
+                      <div className="text-sm text-gray-600 truncate">{r.last_text || '아직 메시지가 없어요'}</div>
+                      {r.message_count > 0 && (
+                        <div className="text-[11px] text-gray-400 mt-0.5">메시지 {r.message_count}개</div>
+                      )}
+                    </div>
+                    <div className="self-center text-gray-300 text-xl">›</div>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200">
         <div className="max-w-2xl mx-auto px-4 py-3 flex items-center gap-3">
           <button onClick={toggleFav} disabled={favBusy}
@@ -776,13 +832,21 @@ function RoomList({ rooms, meId }) {
         return (
           <li key={r.id}>
             <a href={`#/rooms/${r.id}`} className="flex gap-3 p-3 hover:bg-gray-50">
-              <div className="w-12 h-12 rounded-full bg-carrot-100 flex items-center justify-center text-2xl shrink-0">{otherAvatar}</div>
+              <div className="relative shrink-0">
+                <div className="w-12 h-12 rounded-full bg-carrot-100 flex items-center justify-center text-2xl">{otherAvatar}</div>
+                <span className={`absolute -bottom-1 -right-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isBuyer ? 'bg-blue-100 text-blue-700' : 'bg-carrot-100 text-carrot-700'}`}>
+                  {isBuyer ? '구매문의' : '판매문의'}
+                </span>
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold truncate">{otherNickname}</span>
                   <span className="text-xs text-gray-400">{formatTimeAgo(r.last_at || r.created_at)}</span>
                 </div>
                 <div className="text-sm text-gray-600 truncate">{r.last_text || '대화를 시작해 보세요'}</div>
+                {r.product_title && (
+                  <div className="text-xs text-gray-400 truncate mt-0.5">📦 {r.product_title}</div>
+                )}
               </div>
               {r.product_thumbnail && <img src={r.product_thumbnail} className="w-12 h-12 rounded-lg object-cover shrink-0" />}
             </a>
@@ -790,6 +854,73 @@ function RoomList({ rooms, meId }) {
         );
       })}
     </ul>
+  );
+}
+
+function RoomsPage() {
+  const { user, loading: authLoading } = useAuth();
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [err, setErr] = useState('');
+
+  useEffect(() => { if (!authLoading && !user) navigate('/login'); }, [authLoading, user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const data = await api('/api/me/rooms');
+        if (alive) setRooms(data);
+      } catch (e) { if (alive) setErr(e.message); }
+      finally { if (alive) setLoading(false); }
+    };
+    load();
+    const t = setInterval(load, 5000);
+    return () => { alive = false; clearInterval(t); };
+  }, [user]);
+
+  if (!user) return null;
+
+  const filtered = rooms.filter((r) =>
+    filter === 'buying' ? r.buyer_id === user.id
+    : filter === 'selling' ? r.seller_id === user.id
+    : true
+  );
+  const buyingCount = rooms.filter((r) => r.buyer_id === user.id).length;
+  const sellingCount = rooms.filter((r) => r.seller_id === user.id).length;
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 py-4">
+      <h1 className="text-xl font-bold mb-3 flex items-center gap-2">💬 채팅</h1>
+
+      <div className="flex bg-white rounded-xl border border-gray-100 overflow-hidden text-sm font-semibold mb-3">
+        {[
+          ['all', `전체 ${rooms.length}`],
+          ['buying', `구매문의 ${buyingCount}`],
+          ['selling', `판매문의 ${sellingCount}`],
+        ].map(([k, label]) => (
+          <button key={k} onClick={() => setFilter(k)}
+            className={`flex-1 py-3 ${filter === k ? 'bg-carrot-500 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {err && <div className="text-red-600 text-sm mb-2">{err}</div>}
+      {loading ? (
+        <div className="text-center py-12 text-gray-400">불러오는 중...</div>
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon="💬"
+          title={filter === 'selling' ? '아직 받은 문의가 없어요' : filter === 'buying' ? '아직 보낸 문의가 없어요' : '채팅 내역이 없어요'}
+          sub={filter === 'selling' ? '상품을 등록하고 첫 문의를 받아보세요' : '관심 상품에 채팅을 보내보세요'}
+        />
+      ) : (
+        <RoomList rooms={filtered} meId={user.id} />
+      )}
+    </div>
   );
 }
 
@@ -1064,6 +1195,7 @@ function App() {
   else if (path === '/login') body = <LoginPage />;
   else if (path === '/signup') body = <SignupPage />;
   else if (path === '/me') body = <MyPage />;
+  else if (path === '/rooms') body = <RoomsPage />;
   else if (path === '/admin') body = <AdminPage />;
   else if (path === '/products/new') body = <ProductFormPage />;
   else {
