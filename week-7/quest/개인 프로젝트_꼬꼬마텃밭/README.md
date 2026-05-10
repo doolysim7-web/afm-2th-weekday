@@ -1,6 +1,10 @@
 # 🌱 꼬꼬마텃밭 (LittleFarm)
 
+![꼬꼬마텃밭 커버](./cover.png)
+
 > **주말농장 5~10평을 위한 따뜻한 텃밭 동반자** — 1년 캘린더, 작목 가이드(평수 환산), 일지, 가계부, 게시판을 한 손바닥 안에서.
+
+> 📽 발표 첫 슬라이드로 그대로 사용: [`cover.png`](./cover.png) (1920×1080) · 디자인 소스: [`cover.html`](./cover.html)
 
 🔗 **Live**: https://little-farm-ten.vercel.app
 📄 기획 문서: [MISSION.md](./MISSION.md) · [AUDIENCES.md](./AUDIENCES.md) · [DEV.md](./DEV.md)

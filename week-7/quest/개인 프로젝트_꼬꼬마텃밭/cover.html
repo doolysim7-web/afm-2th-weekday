@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>꼬꼬마텃밭 — 발표 커버</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1920px; height: 1080px; overflow: hidden; background: #fbf6e9; font-family: 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', system-ui, sans-serif; color: #1f2937; }
+  .slide { position: relative; width: 1920px; height: 1080px; display: flex; }
+
+  /* ── 좌측: 텍스트 ──────────────────────────────────── */
+  .left { flex: 1.05; padding: 100px 90px 90px 110px; display: flex; flex-direction: column; justify-content: space-between; background: linear-gradient(180deg, #fbf6e9 0%, #ffffff 100%); position: relative; z-index: 2; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: #dcfce7; color: #166534; font-weight: 700; font-size: 22px;
+    padding: 12px 24px; border-radius: 999px; width: fit-content;
+    border: 1px solid #bbf7d0;
+  }
+  .brand-mark { font-size: 36px; color: #67ac57; font-weight: 700; letter-spacing: -0.5px; margin-top: 24px; }
+  .title { font-size: 200px; font-weight: 900; letter-spacing: -8px; line-height: 0.96; color: #2c3a25; margin-top: 8px; }
+  .title .accent { color: #67ac57; }
+  .subtitle { font-size: 56px; font-weight: 500; letter-spacing: 6px; color: #87c178; margin-top: 12px; }
+  .tagline { font-size: 56px; font-weight: 700; line-height: 1.35; color: #2c3a25; margin-top: 56px; letter-spacing: -1px; }
+  .tagline .hl {
+    background: linear-gradient(180deg, transparent 60%, #ffe6d1 60%);
+    padding: 0 6px;
+  }
+
+  .chips { display: flex; gap: 12px; margin-top: 56px; flex-wrap: wrap; }
+  .chip {
+    background: #ffffff; border: 2px solid #c2e3a9; color: #3e7233;
+    font-weight: 700; font-size: 22px;
+    padding: 12px 22px; border-radius: 999px;
+    box-shadow: 0 2px 0 rgba(103,172,87,.12);
+  }
+
+  .footer { display: flex; align-items: center; justify-content: space-between; color: #6b7280; font-size: 22px; }
+  .footer .url { font-weight: 700; color: #4f8e41; font-family: 'SFMono-Regular', Menlo, monospace; font-size: 22px; }
+  .footer .meta { color: #9ca3af; }
+
+  /* ── 우측: 텃밭 일러스트 ─────────────────────────── */
+  .right {
+    width: 820px; height: 1080px;
+    position: relative; overflow: hidden;
+    background: linear-gradient(180deg, #dbeafe 0%, #ecfdf5 65%);
+  }
+  .sun { position: absolute; right: 110px; top: 130px; }
+  .sun .ring { width: 240px; height: 240px; border-radius: 50%; background: radial-gradient(circle, rgba(253,224,71,0.55) 0%, rgba(253,224,71,0) 60%); }
+  .sun .ball { position: absolute; left: 60px; top: 60px; width: 120px; height: 120px; background: #fde047; border-radius: 50%; box-shadow: 0 0 80px rgba(253,224,71,0.5); }
+  .cloud { position: absolute; background: #ffffff; border-radius: 999px; opacity: .8; }
+  .cloud.c1 { left: 40px;  top: 200px; width: 220px; height: 60px; }
+  .cloud.c1::before { content: ''; position: absolute; left: 30px; top: -22px; width: 110px; height: 70px; background: white; border-radius: 999px; }
+  .cloud.c2 { left: 350px; top: 380px; width: 180px; height: 50px; opacity: .65; }
+
+  .ground { position: absolute; left: 0; right: 0; bottom: 0; height: 460px;
+    background: linear-gradient(180deg, #86efac 0%, #4ade80 60%, #16a34a 100%);
+    clip-path: ellipse(140% 100% at 50% 100%);
+  }
+  .ground::before {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.45) 0%, transparent 50%);
+  }
+
+  .crops { position: absolute; left: 0; right: 0; bottom: 80px; display: flex; align-items: flex-end; justify-content: center; gap: 18px; padding: 0 40px; }
+  .crops span { display: inline-block; filter: drop-shadow(0 8px 12px rgba(0,0,0,.15)); }
+  .crops .c1 { font-size: 200px; transform: translateY(20px); }
+  .crops .c2 { font-size: 230px; }
+  .crops .c3 { font-size: 200px; transform: translateY(10px); }
+  .crops .c4 { font-size: 200px; transform: translateY(28px); }
+  .crops .c5 { font-size: 170px; transform: translateY(40px); }
+
+  .float { position: absolute; }
+  .butterfly { right: 460px; top: 380px; font-size: 80px; transform: rotate(-12deg); }
+  .leaf { right: 110px; top: 480px; font-size: 70px; transform: rotate(20deg); opacity: .9; }
+  .seedling { left: 60px; bottom: 230px; font-size: 90px; }
+
+  /* ── 좌하단 미니 통계 ──────────────────────────── */
+  .mini-stats { display: flex; gap: 18px; margin-top: 48px; }
+  .stat { background: white; border: 1px solid #e6e9ef; border-radius: 18px; padding: 18px 24px; box-shadow: 0 4px 14px -8px rgba(0,0,0,.08); }
+  .stat .num { font-size: 36px; font-weight: 900; color: #2c3a25; }
+  .stat .lab { font-size: 14px; color: #6b7280; margin-top: 2px; }
+</style>
+</head>
+<body>
+<div class="slide">
+  <!-- 좌측 텍스트 영역 -->
+  <div class="left">
+    <div>
+      <div class="badge">🥕 AFM 7주차 · 개인 프로젝트</div>
+      <div class="brand-mark">🌱 LittleFarm</div>
+      <div class="title">꼬꼬마<span class="accent">텃밭</span></div>
+      <div class="subtitle">L I T T L E&nbsp;&nbsp;F A R M</div>
+      <div class="tagline">
+        주말농장 <span class="hl">5~10평</span>을 위한<br/>
+        따뜻한 <span class="hl">텃밭 동반자</span>.
+      </div>
+      <div class="chips">
+        <span class="chip">📅 1년 캘린더</span>
+        <span class="chip">🌿 작목 가이드</span>
+        <span class="chip">📔 일지</span>
+        <span class="chip">💰 가계부</span>
+        <span class="chip">💬 게시판</span>
+      </div>
+      <div class="mini-stats">
+        <div class="stat"><div class="num">12<sup>+</sup></div><div class="lab">작목</div></div>
+        <div class="stat"><div class="num">5/10/20</div><div class="lab">평 단위 환산</div></div>
+        <div class="stat"><div class="num">10</div><div class="lab">DB 테이블</div></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="url">🔗 little-farm-ten.vercel.app</div>
+      <div class="meta">2026.05 · made by 꼬꼬마지기</div>
+    </div>
+  </div>
+
+  <!-- 우측 일러스트 -->
+  <div class="right">
+    <div class="cloud c1"></div>
+    <div class="cloud c2"></div>
+    <div class="sun">
+      <div class="ring"></div>
+      <div class="ball"></div>
+    </div>
+    <div class="float butterfly">🦋</div>
+    <div class="float leaf">🌿</div>
+    <div class="ground"></div>
+    <div class="float seedling">🌱</div>
+    <div class="crops">
+      <span class="c1">🥬</span>
+      <span class="c2">🍅</span>
+      <span class="c3">🌶️</span>
+      <span class="c4">🥒</span>
+      <span class="c5">🌿</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>
