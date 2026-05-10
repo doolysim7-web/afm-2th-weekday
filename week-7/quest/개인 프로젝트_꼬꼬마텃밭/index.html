@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>꼬꼬마텃밭 — LittleFarm</title>
+<meta name="description" content="주말농장러를 위한 따뜻한 텃밭 동반자. 1년 캘린더 · 작목 가이드 · 일지 · 가계부 · 게시판" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌱%3C/text%3E%3C/svg%3E" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        leaf: { 50: '#f1f9ec', 100: '#e0f1d4', 200: '#c2e3a9', 300: '#a7d49c', 400: '#87c178', 500: '#67ac57', 600: '#4f8e41', 700: '#3e7233', 800: '#305828' },
+        beige:{ 50: '#fdfcf6', 100: '#fbf6e9', 200: '#f5ecd5' },
+        carrot:{ 50: '#fff5ec', 100: '#ffe6d1', 300: '#ffa15e', 400: '#ff9a55', 500: '#f97e30', 600: '#e85700' },
+      },
+    },
+  },
+};
+</script>
+<style>
+html, body, #root { height: 100%; }
+body { background: #fbf6e9; font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard', 'Noto Sans KR', sans-serif; color: #2c3a25; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.fade-in { animation: fadein .15s ease-out; }
+@keyframes fadein { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+/* prose mini */
+.prose-mini { white-space: pre-wrap; line-height: 1.7; }
+</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react" src="/client.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "small-forest-littlefarm",
+  "version": "1.0.0",
+  "private": true,
+  "description": "꼬꼬마텃밭 (LittleFarm) — 주말농장러를 위한 따뜻한 텃밭 동반자",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node seed.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^5.0.1",
+    "imagekit": "^5.2.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1"
+  }
+}
