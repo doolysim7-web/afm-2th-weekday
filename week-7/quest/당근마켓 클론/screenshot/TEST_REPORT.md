@@ -1,16 +1,16 @@
 # 당근마켓 클론 — 케이스별 테스트 리포트
 
-**테스트 일시**: 2026-05-10
+**테스트 일시**: 2026-05-10 (재테스트 19:00, 패치 적용 빌드)
 **테스트 환경**: Chrome DevTools 자동화 (`mcp__chrome-devtools`) + 로컬 서버 `http://localhost:3000`
-**대상 빌드**: `main` 브랜치 commit `224cf71`
+**대상 빌드**: `main` 브랜치 commit `562732e` (이슈 3건 수정 후)
 
 ## 테스트 계정
 
 | 역할 | 이메일 | 비밀번호 |
 |---|---|---|
 | 👑 관리자 | `admin@carrot.test` | `admin1234` |
-| 일반 (판매자) | `minji@carrot.test` | `carrot123` |
-| 신규 가입 (구매자) | `qa.tester@carrot.test` | `qa12345` (테스트 중 신규 생성) |
+| 판매자 | `jihoon@carrot.test` | `carrot123` |
+| 신규 가입 (구매자) | `qa2.tester@carrot.test` | `qa12345` (재테스트에서 신규 생성) |
 
 ---
 
