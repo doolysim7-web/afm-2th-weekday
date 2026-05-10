@@ -95,6 +95,27 @@
 
 ---
 
+## 대시보드 모달 체크박스 추가 테스트 (커밋 `2a8b115`)
+
+| # | 시나리오 | 결과 | 캡처 |
+|---|---|---|---|
+| 32 | 모달 첫 노출 — 미체크 상태 | ✅ 빈 체크박스 + "닫기" 버튼 분리 | `32-modal-checkbox.png` |
+| 33 | 체크박스 클릭 → ✓ 연두 활성 | ✅ DOM `checked=true`, 라벨 옆 ✓ 표시 | `33-modal-checkbox-checked.png` |
+| 34 | 플래그 제거 → 새로고침 시 모달 재노출 (초기값 미체크) | ✅ | `34-cb-initial-unchecked.png` |
+| 35 | 체크박스 클릭 → 즉시 localStorage 플래그 `1` 저장 | ✅ flag = "1" | `35-cb-checked.png` |
+| 36 | 체크 + 닫기 → 새로고침 시 모달 ❌ (sticky) | ✅ 모달 노출 안 됨 | `36-cb-after-reload-no-modal.png` |
+| 37 | 플래그 제거 후 새로고침 → 모달 다시 등장 | ✅ | `37-cb-modal-back-after-uncheck.png` |
+| 38 | 미체크 + 닫기 → 새로고침 시 1회성으로 다시 등장 | ✅ flag null, 모달 재노출 | `38-cb-uncheck-close-reappear.png` |
+
+### 핵심 검증
+
+- **체크박스 즉시 동기화**: 체크 → localStorage `dashboard_dismissed_<YYYY-MM-DD>_<userId>` 즉시 저장, 해제 → 즉시 제거
+- **닫기 동작 분리**: 닫기/X/배경 클릭 모두 동일하게 모달 닫음. 체크 여부는 UI 자체에서 이미 반영
+- **하루 단위 키**: 키에 오늘 날짜 포함 → 자정 지나면 자연스럽게 다시 노출
+- **사용자별 분리**: userId 포함 → 다른 계정 로그인 시 영향 없음
+
+---
+
 ## 다중 작목 일지 추가 테스트 (커밋 `52cafe1`)
 
 > v1 이후 추가된 "일지에 여러 작목 태깅" 기능을 별도로 검증.
