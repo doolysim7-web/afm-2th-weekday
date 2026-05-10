@@ -1375,26 +1375,40 @@ function AdminPage() {
 // ---------------------------------------------------------------------------
 function DashboardModal() {
   const { user } = useAuth();
-  const [data, setData] = useState(null); const [closed, setClosed] = useState(false);
+  const [data, setData] = useState(null);
+  const [closed, setClosed] = useState(false);
+  const [dontShowToday, setDontShowToday] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     const key = `dashboard_dismissed_${new Date().toISOString().slice(0,10)}_${user.id}`;
     if (localStorage.getItem(key) === '1') { setClosed(true); return; }
     (async () => { try { setData(await api('/api/me/dashboard')); } catch {} })();
   }, [user]);
+
   if (!user || closed || !data) return null;
-  const dismiss = (forever) => {
-    if (forever) {
+
+  const dismiss = () => {
+    if (dontShowToday) {
       const key = `dashboard_dismissed_${new Date().toISOString().slice(0,10)}_${user.id}`;
       localStorage.setItem(key, '1');
     }
     setClosed(true);
   };
-  // 보여줄 콘텐츠가 있을 때만
+
+  // 체크박스 토글 — 즉시 localStorage에 반영해 새로고침해도 유지
+  const toggleDontShow = (checked) => {
+    setDontShowToday(checked);
+    const key = `dashboard_dismissed_${new Date().toISOString().slice(0,10)}_${user.id}`;
+    if (checked) localStorage.setItem(key, '1');
+    else localStorage.removeItem(key);
+  };
+
   const hasContent = (data.my_crop_tasks || []).filter(t => t.task_type).length > 0 || (data.season_tip || []).length > 0;
   if (!hasContent) return null;
+
   return (
-    <div className="fixed inset-0 z-40 bg-black/40 flex items-end sm:items-center justify-center p-3" onClick={()=>dismiss(false)}>
+    <div className="fixed inset-0 z-40 bg-black/40 flex items-end sm:items-center justify-center p-3" onClick={dismiss}>
       <div className="bg-white rounded-3xl max-w-md w-full p-5 fade-in" onClick={(e)=>e.stopPropagation()}>
         <div className="flex items-center gap-2">
           <span className="text-2xl">🌿</span>
@@ -1402,7 +1416,7 @@ function DashboardModal() {
             <div className="font-bold">{user.display_name}님, 이번 주말은 어떠세요?</div>
             <div className="text-xs text-gray-500">{data.month}월에 챙길 일</div>
           </div>
-          <button onClick={()=>dismiss(false)} className="ml-auto text-gray-400 text-xl">✕</button>
+          <button onClick={dismiss} className="ml-auto text-gray-400 text-xl hover:text-gray-600">✕</button>
         </div>
         {data.my_crop_tasks.length > 0 && (
           <div className="mt-3">
@@ -1424,15 +1438,24 @@ function DashboardModal() {
             <div className="text-xs font-semibold text-gray-700 mb-1">🌷 이번 달 시즌 시작 작목</div>
             <div className="flex gap-2 overflow-x-auto no-scrollbar">
               {data.season_tip.map((c) => (
-                <a key={c.id} href={`#/crops/${c.id}`} onClick={()=>dismiss(false)} className="shrink-0 bg-leaf-50 px-3 py-2 rounded-xl text-sm">
+                <a key={c.id} href={`#/crops/${c.id}`} onClick={dismiss} className="shrink-0 bg-leaf-50 px-3 py-2 rounded-xl text-sm">
                   {c.name_ko} {c.beginner_friendly && '♥'}
                 </a>
               ))}
             </div>
           </div>
         )}
-        <div className="flex gap-2 mt-4">
-          <button onClick={()=>dismiss(true)} className="text-xs text-gray-500">오늘 다시 보지 않기</button>
+        <div className="mt-4 pt-3 border-t border-leaf-100 flex items-center justify-between">
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              className="w-4 h-4 accent-leaf-500 cursor-pointer"
+              checked={dontShowToday}
+              onChange={(e) => toggleDontShow(e.target.checked)}
+            />
+            <span>오늘 다시 보지 않기</span>
+          </label>
+          <button onClick={dismiss} className="text-sm text-leaf-700 font-semibold hover:text-leaf-800">닫기</button>
         </div>
       </div>
     </div>
