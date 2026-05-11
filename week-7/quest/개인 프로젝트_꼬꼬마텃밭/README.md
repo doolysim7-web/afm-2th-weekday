@@ -83,6 +83,7 @@ JWT_SECRET=replace-me
 IMAGEKIT_PUBLIC_KEY=public_xxx
 IMAGEKIT_PRIVATE_KEY=private_xxx
 IMAGEKIT_URL_ENDPOINT=https://ik.imagekit.io/your_id
+GEMINI_API_KEY=AIza...   # 작목 가이드 자동 생성용 (Google Gemini)
 PORT=3001
 ```
 

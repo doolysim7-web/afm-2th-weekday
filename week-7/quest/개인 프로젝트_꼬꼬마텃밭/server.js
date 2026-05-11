@@ -61,6 +61,188 @@ async function setLogCrops(client, logId, cropIds) {
 }
 
 // ---------------------------------------------------------------------------
+// Gemini — 작목 재배 가이드 자동 생성
+// ---------------------------------------------------------------------------
+// 2.5 Flash가 일시 과부하(503)일 때 자동 폴백
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+function clampInt(n, lo, hi, fallback) {
+  const v = Number.parseInt(n, 10);
+  if (!Number.isInteger(v)) return fallback;
+  return Math.max(lo, Math.min(hi, v));
+}
+
+function sanitizeAICrop(name, raw) {
+  const safe = raw && typeof raw === 'object' ? raw : {};
+  const category = CROP_CATEGORIES.includes(safe.category) ? safe.category : '엽채';
+  const ss = clampInt(safe.season_start_month, 1, 12, 3);
+  const se = clampInt(safe.season_end_month, 1, 12, 10);
+  const wf = clampInt(safe.water_freq_days, 1, 30, 2);
+  const tasks = Array.isArray(safe.tasks) ? safe.tasks : [];
+  const cleanTasks = tasks
+    .map((t) => {
+      if (!t || typeof t !== 'object') return null;
+      const tt = TASK_TYPES.includes(t.task_type) ? t.task_type : null;
+      const m = clampInt(t.month, 1, 12, null);
+      const wim = clampInt(t.week_in_month, 0, 5, 0);
+      if (!tt || m === null) return null;
+      return {
+        task_type: tt,
+        month: m,
+        week_in_month: wim,
+        instructions_md: (t.instructions_md || '').toString().slice(0, 300),
+        per_5pyeong_amount: (t.per_5pyeong_amount || '').toString().slice(0, 30),
+        per_10pyeong_amount: (t.per_10pyeong_amount || '').toString().slice(0, 30),
+        per_20pyeong_amount: (t.per_20pyeong_amount || '').toString().slice(0, 30),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 24);
+  return {
+    category,
+    season_start_month: ss,
+    season_end_month: se,
+    sunlight: (safe.sunlight || '').toString().slice(0, 30),
+    water_freq_days: wf,
+    soil_pref: (safe.soil_pref || '').toString().slice(0, 60),
+    summary_md: (safe.summary_md || '').toString().slice(0, 500),
+    beginner_friendly: !!safe.beginner_friendly,
+    tasks: cleanTasks,
+  };
+}
+
+const CROP_INFO_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    category: { type: 'STRING', enum: CROP_CATEGORIES },
+    season_start_month: { type: 'INTEGER' },
+    season_end_month: { type: 'INTEGER' },
+    sunlight: { type: 'STRING' },
+    water_freq_days: { type: 'INTEGER' },
+    soil_pref: { type: 'STRING' },
+    summary_md: { type: 'STRING' },
+    beginner_friendly: { type: 'BOOLEAN' },
+    tasks: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          task_type: { type: 'STRING', enum: TASK_TYPES },
+          month: { type: 'INTEGER' },
+          week_in_month: { type: 'INTEGER' },
+          instructions_md: { type: 'STRING' },
+          per_5pyeong_amount: { type: 'STRING' },
+          per_10pyeong_amount: { type: 'STRING' },
+          per_20pyeong_amount: { type: 'STRING' },
+        },
+        required: ['task_type', 'month', 'instructions_md'],
+      },
+    },
+  },
+  required: [
+    'category', 'season_start_month', 'season_end_month',
+    'sunlight', 'water_freq_days', 'soil_pref', 'summary_md',
+    'beginner_friendly', 'tasks',
+  ],
+};
+
+async function generateCropInfoByAI(nameKo) {
+  const key = (process.env.GEMINI_API_KEY || '').trim();
+  if (!key) throw new Error('GEMINI_API_KEY missing');
+
+  const prompt = `너는 한국 주말농장·텃밭 재배 가이드를 짜는 친절한 도우미야.
+작목 "${nameKo}"의 재배 정보를 한국 중부지방(서울/경기) 노지 기준으로 채워줘.
+
+규칙:
+- category는 ${CROP_CATEGORIES.join('/')} 중 하나.
+- season_start_month / season_end_month는 모종 심기부터 마지막 수확까지 1~12 사이 정수.
+- water_freq_days는 며칠에 한 번 물주는지 1~30 정수.
+- sunlight는 "양지" / "반양지" / "음지" 같이 짧게.
+- soil_pref는 "물빠짐 좋은 사질양토" 처럼 짧게 (한 줄).
+- summary_md는 초보자가 읽고 안심할 수 있는 따뜻한 한두 문장 (이모지 1개 정도 OK, 200자 이내).
+- beginner_friendly는 초보가 키우기 쉬우면 true.
+- tasks는 그 작목의 월별 핵심 작업을 6~12개로. task_type은 ${TASK_TYPES.join('/')} 중 하나.
+  - month는 1~12 정수, week_in_month는 0(=무관)~5.
+  - instructions_md는 "줄간격 30cm, 모종 사이 25cm" 처럼 구체적이고 짧게 (200자 이내).
+  - per_5pyeong_amount / per_10pyeong_amount / per_20pyeong_amount는 "10그루", "1kg" 같은 수량. 모르면 빈 문자열.
+- 모든 텍스트는 한국어.`;
+
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: CROP_INFO_SCHEMA,
+      temperature: 0.4,
+    },
+  };
+
+  let lastErr = null;
+  for (const model of GEMINI_MODELS) {
+    const url = `${GEMINI_BASE}/${model}:generateContent?key=${encodeURIComponent(key)}`;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        // 503/429/500이면 다음 모델로 폴백, 그 외는 즉시 throw
+        if ([429, 500, 502, 503, 504].includes(resp.status)) {
+          lastErr = new Error(`${model} ${resp.status}: ${errText.slice(0, 120)}`);
+          console.warn(`Gemini ${model} ${resp.status} — falling back`);
+          continue;
+        }
+        throw new Error(`Gemini ${model} ${resp.status}: ${errText.slice(0, 200)}`);
+      }
+      const data = await resp.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) { lastErr = new Error(`${model}: empty response`); continue; }
+      let parsed;
+      try { parsed = JSON.parse(text); }
+      catch { lastErr = new Error(`${model}: JSON parse failed`); continue; }
+      return sanitizeAICrop(nameKo, parsed);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Gemini all models failed');
+}
+
+async function applyAICropInfo(client, cropId, ai) {
+  await client.query(
+    `UPDATE ${T.crops}
+        SET category = $1,
+            season_start_month = $2,
+            season_end_month = $3,
+            sunlight = $4,
+            water_freq_days = $5,
+            soil_pref = $6,
+            summary_md = $7,
+            beginner_friendly = $8
+      WHERE id = $9`,
+    [
+      ai.category, ai.season_start_month, ai.season_end_month,
+      ai.sunlight, ai.water_freq_days, ai.soil_pref,
+      ai.summary_md, ai.beginner_friendly, cropId,
+    ]
+  );
+  for (const t of ai.tasks) {
+    await client.query(
+      `INSERT INTO ${T.cropTasks}
+         (crop_id, task_type, month, week_in_month, instructions_md,
+          per_5pyeong_amount, per_10pyeong_amount, per_20pyeong_amount)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        cropId, t.task_type, t.month, t.week_in_month, t.instructions_md,
+        t.per_5pyeong_amount, t.per_10pyeong_amount, t.per_20pyeong_amount,
+      ]
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // DB Schema (lazy init)
 // ---------------------------------------------------------------------------
 let dbInitialized = false;
@@ -562,15 +744,16 @@ app.delete('/api/crops/:cropId/tasks/:taskId', authRequired, async (req, res) =>
 // Quick add crop (회원 누구나, 일지 작성 중 즉석 추가용)
 // ---------------------------------------------------------------------------
 app.post('/api/crops/quick', authRequired, async (req, res) => {
+  const client = await pool.connect();
   try {
     const name = (req.body?.name_ko || '').toString().trim();
     const category = (req.body?.category || '기타').toString();
     if (!name) return res.status(400).json({ success: false, message: '작목명을 적어주세요' });
     if (name.length > 20) return res.status(400).json({ success: false, message: '작목명은 20자 이하' });
-    const cat = CROP_CATEGORIES.includes(category) ? category : '기타';
+    const cat = CROP_CATEGORIES.includes(category) ? category : '엽채';
 
     // 이미 같은 이름이 있으면 그대로 반환 (중복 추가 방지)
-    const exist = await pool.query(
+    const exist = await client.query(
       `SELECT id, name_ko, name_en, category, season_start_month, season_end_month,
               sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly
          FROM ${T.crops} WHERE name_ko = $1`,
@@ -579,20 +762,85 @@ app.post('/api/crops/quick', authRequired, async (req, res) => {
     if (exist.rows[0]) {
       return res.json({ success: true, data: { ...exist.rows[0], reused: true } });
     }
-    const r = await pool.query(
+
+    // 1) 일단 사용자 입력만으로 row 생성 (AI 실패해도 작목 등록은 보장)
+    const ins = await client.query(
       `INSERT INTO ${T.crops}
          (name_ko, name_en, category, season_start_month, season_end_month,
           sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly)
        VALUES ($1, '', $2, 1, 12, '', 2, '', $3, '', FALSE)
-       RETURNING id, name_ko, name_en, category, season_start_month, season_end_month,
-                 sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly`,
-      [name, cat, `${req.userId}님이 직접 추가한 작목입니다. 가이드는 추후 추가될 예정이에요.`]
+       RETURNING id`,
+      [name, cat, 'AI가 가이드를 만드는 중이에요…']
     );
-    res.status(201).json({ success: true, data: r.rows[0] });
+    const cropId = ins.rows[0].id;
+
+    // 2) Gemini로 재배 가이드 자동 생성
+    let aiOk = false;
+    let aiError = null;
+    try {
+      const ai = await generateCropInfoByAI(name);
+      await applyAICropInfo(client, cropId, ai);
+      aiOk = true;
+    } catch (e) {
+      console.warn(`AI fill failed for "${name}":`, e.message);
+      aiError = e.message;
+      // AI 실패 시 안내 메시지로 summary 갱신
+      await client.query(
+        `UPDATE ${T.crops} SET summary_md = $1 WHERE id = $2`,
+        [`${name} 가이드를 자동으로 만들지 못했어요. 정보 보강 페이지에서 직접 채워주세요 🌱`, cropId]
+      );
+    }
+
+    const out = await client.query(
+      `SELECT id, name_ko, name_en, category, season_start_month, season_end_month,
+              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly
+         FROM ${T.crops} WHERE id = $1`,
+      [cropId]
+    );
+    res.status(201).json({ success: true, data: { ...out.rows[0], ai_filled: aiOk, ai_error: aiError } });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ success: false, message: '이미 같은 이름의 작목이 있어요' });
     console.error('quick add crop failed:', err);
     res.status(500).json({ success: false, message: '작목 추가 실패' });
+  } finally {
+    client.release();
+  }
+});
+
+// 기존 작목을 AI로 다시 채우기 (가이드가 비어있거나 마음에 안 들 때)
+app.post('/api/crops/:id/ai-fill', authRequired, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    const cur = await client.query(`SELECT id, name_ko FROM ${T.crops} WHERE id = $1`, [id]);
+    if (!cur.rows[0]) return res.status(404).json({ success: false, message: '작목 없음' });
+    const name = cur.rows[0].name_ko;
+
+    const replaceTasks = req.body?.replace_tasks !== false; // 기본 true
+    const ai = await generateCropInfoByAI(name);
+
+    await client.query('BEGIN');
+    if (replaceTasks) {
+      await client.query(`DELETE FROM ${T.cropTasks} WHERE crop_id = $1`, [id]);
+    }
+    await applyAICropInfo(client, id, ai);
+    await client.query('COMMIT');
+
+    const out = await client.query(`SELECT * FROM ${T.crops} WHERE id = $1`, [id]);
+    const tasks = await client.query(
+      `SELECT id, task_type, month, week_in_month, instructions_md, fertilizer_recipe_md,
+              per_5pyeong_amount, per_10pyeong_amount, per_20pyeong_amount, image_url
+         FROM ${T.cropTasks} WHERE crop_id = $1 ORDER BY month, week_in_month`,
+      [id]
+    );
+    res.json({ success: true, data: { ...out.rows[0], tasks: tasks.rows } });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('ai-fill failed:', err);
+    res.status(500).json({ success: false, message: 'AI 자동 생성 실패: ' + err.message });
+  } finally {
+    client.release();
   }
 });
 

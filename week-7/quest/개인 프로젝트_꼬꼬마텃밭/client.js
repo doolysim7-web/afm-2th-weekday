@@ -710,6 +710,20 @@ function CropEditPage({ id }) {
     catch (ex) { alert(ex.message); }
   };
 
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState('');
+  const aiFill = async () => {
+    if (!confirm(`"${c?.name_ko}" 재배 정보를 AI로 다시 채울까요?\n기본 정보와 월별 작업이 자동 생성됩니다.\n(기존 월별 작업은 모두 삭제돼요)`)) return;
+    setAiBusy(true); setAiMsg('');
+    try {
+      await api(`/api/crops/${id}/ai-fill`, { method: 'POST', body: JSON.stringify({ replace_tasks: true }) });
+      setAiMsg('✨ AI가 가이드를 새로 채웠어요!');
+      await load();
+      setTimeout(() => setAiMsg(''), 5000);
+    } catch (ex) { setAiMsg('AI 생성 실패: ' + ex.message); }
+    finally { setAiBusy(false); }
+  };
+
   if (!user) return null;
   if (err && !c) return <div className="max-w-3xl mx-auto p-4 text-red-600">{err}</div>;
   if (!c) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-400">불러오는 중...</div>;
@@ -722,8 +736,16 @@ function CropEditPage({ id }) {
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
       <div className="flex items-center gap-2">
         <a href={`#/crops/${id}`} className="text-leaf-700 text-xl">←</a>
-        <h1 className="text-2xl font-bold">{c.name_ko} 정보 보강</h1>
+        <h1 className="text-2xl font-bold flex-1">{c.name_ko} 정보 보강</h1>
+        <button
+          type="button" onClick={aiFill} disabled={aiBusy}
+          className="text-xs px-3 h-9 rounded-full bg-leaf-500 text-white hover:bg-leaf-600 disabled:opacity-50"
+          title="Google Gemini로 재배 정보·월별 작업을 자동 생성합니다"
+        >{aiBusy ? '✨ 생성 중…' : '✨ AI로 자동 채우기'}</button>
       </div>
+      {aiMsg && (
+        <div className="text-sm bg-leaf-50 text-leaf-800 rounded-xl px-3 py-2 border border-leaf-200">{aiMsg}</div>
+      )}
 
       {/* 1. 작목 기본 정보 */}
       <form onSubmit={saveInfo} className="bg-white rounded-2xl border border-leaf-100 p-5 space-y-3">
@@ -988,11 +1010,12 @@ function LogFormPage({ id }) {
 
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickName, setQuickName] = useState('');
-  const [quickCat, setQuickCat] = useState('기타');
+  const [quickCat, setQuickCat] = useState('엽채');
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickErr, setQuickErr] = useState('');
+  const [quickNotice, setQuickNotice] = useState('');
   const handleQuickAdd = async () => {
-    setQuickErr('');
+    setQuickErr(''); setQuickNotice('');
     const n = quickName.trim();
     if (!n) { setQuickErr('작목명을 적어주세요'); return; }
     setQuickBusy(true);
@@ -1004,7 +1027,15 @@ function LogFormPage({ id }) {
       // 목록에 없으면 추가, 자동 토글 ON
       setCrops((prev) => prev.find((c) => c.id === created.id) ? prev : [...prev, created]);
       setCropIds((prev) => prev.includes(created.id) ? prev : [...prev, created.id].slice(0, 10));
-      setQuickName(''); setQuickCat('기타'); setShowQuickAdd(false);
+      setQuickName(''); setQuickCat('엽채'); setShowQuickAdd(false);
+      if (created.reused) {
+        setQuickNotice(`이미 있던 ${created.name_ko}을(를) 선택했어요.`);
+      } else if (created.ai_filled) {
+        setQuickNotice(`✨ ${created.name_ko} 재배 가이드를 AI가 만들어줬어요. 작목 상세에서 확인해보세요!`);
+      } else if (created.ai_error) {
+        setQuickNotice(`${created.name_ko}을(를) 추가했어요. AI 가이드 생성은 실패해서 직접 채워야 해요.`);
+      }
+      setTimeout(() => setQuickNotice(''), 6000);
     } catch (e) { setQuickErr(e.message); }
     finally { setQuickBusy(false); }
   };
@@ -1074,7 +1105,7 @@ function LogFormPage({ id }) {
           </div>
           {showQuickAdd && (
             <div className="mt-2 bg-leaf-50 rounded-xl p-3 border border-leaf-100">
-              <div className="text-xs text-gray-600 mb-2">목록에 없는 작목을 추가할게요. 작목명만 적으셔도 돼요 🌱</div>
+              <div className="text-xs text-gray-600 mb-2">목록에 없는 작목을 추가할게요. 작목명만 적으면 ✨AI가 재배 가이드까지 자동으로 채워줘요 🌱</div>
               <div className="flex gap-2 flex-wrap">
                 <input
                   className="input flex-1 min-w-[140px]"
@@ -1090,16 +1121,21 @@ function LogFormPage({ id }) {
                   }}
                 />
                 <select className="input flex-none w-32" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
-                  {['엽채','과채','근채','곡류','허브','기타'].map((c) => <option key={c} value={c}>{c}</option>)}
+                  {['엽채','과채','근채','곡류','허브'].map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               {quickErr && <div className="text-xs text-red-600 mt-2">{quickErr}</div>}
               <div className="flex gap-2 mt-2">
                 <button type="button" onClick={handleQuickAdd} disabled={quickBusy || !quickName.trim()}
-                  className="btn-primary text-sm flex-1">{quickBusy ? '추가 중…' : '+ 추가'}</button>
+                  className="btn-primary text-sm flex-1">{quickBusy ? '✨ AI가 가이드 만드는 중…' : '+ 추가 (AI 자동 채움)'}</button>
                 <button type="button" onClick={() => { setShowQuickAdd(false); setQuickName(''); setQuickErr(''); }}
                   className="btn-ghost text-sm">취소</button>
               </div>
+            </div>
+          )}
+          {quickNotice && (
+            <div className="mt-2 text-xs bg-leaf-100 text-leaf-800 rounded-lg px-3 py-2 border border-leaf-200">
+              {quickNotice}
             </div>
           )}
         </Field>
