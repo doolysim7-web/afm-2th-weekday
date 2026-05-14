@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KR2EN Statement · Securities Module (Prototype v1)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+    .num {
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    table.preview {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table.preview thead th {
+      background-color: #f1f5f9;
+      color: #334155;
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+    table.preview tbody td {
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      vertical-align: middle;
+    }
+    table.preview tbody tr:nth-child(even) td {
+      background-color: #fafbfc;
+    }
+    .editable-cell {
+      background-color: #fef9c3;
+      cursor: text;
+      transition: background-color 0.15s ease;
+    }
+    .editable-cell:hover {
+      background-color: #fde68a;
+    }
+    .editable-cell input {
+      width: 100%;
+      border: none;
+      outline: 2px solid #2563eb;
+      background: white;
+      padding: 4px 6px;
+      font: inherit;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ========================================
+    // React Hooks Destructuring
+    // ========================================
+    const { useState, useMemo, useCallback, useRef, useEffect } = React;
+
+    // ========================================
+    // ----------- Design System -----------
+    // ========================================
+
+    function Button({
+      variant = "primary",
+      size = "md",
+      disabled = false,
+      onClick,
+      className = "",
+      children,
+      type = "button",
+    }) {
+      const base =
+        "inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed";
+      const sizes = {
+        sm: "px-3 py-1.5 text-sm",
+        md: "px-4 py-2 text-sm",
+        lg: "px-5 py-3 text-base",
+      };
+      const variants = {
+        primary: "bg-blue-600 hover:bg-blue-700 text-white focus:ring-blue-500",
+        secondary:
+          "bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 focus:ring-slate-400",
+        danger: "bg-red-50 hover:bg-red-100 text-red-700 focus:ring-red-400",
+        success:
+          "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 focus:ring-emerald-400",
+        ghost: "bg-transparent hover:bg-slate-100 text-slate-700",
+      };
+      return (
+        <button
+          type={type}
+          disabled={disabled}
+          onClick={onClick}
+          className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}
+        >
+          {children}
+        </button>
+      );
+    }
+
+    function Card({ className = "", children }) {
+      return (
+        <div
+          className={`bg-white border border-slate-200 rounded-lg shadow-sm ${className}`}
+        >
+          {children}
+        </div>
+      );
+    }
+
+    function CardHeader({ title, subtitle, right, icon }) {
+      return (
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50/60 rounded-t-lg">
+          <div className="flex items-center gap-2">
+            {icon && <span className="text-lg">{icon}</span>}
+            <div>
+              <h3 className="text-base font-semibold text-slate-800 leading-tight">
+                {title}
+              </h3>
+              {subtitle && (
+                <p className="text-xs text-slate-500 leading-tight">
+                  {subtitle}
+                </p>
+              )}
+            </div>
+          </div>
+          {right && <div>{right}</div>}
+        </div>
+      );
+    }
+
+    function CardBody({ className = "", children }) {
+      return <div className={`p-5 ${className}`}>{children}</div>;
+    }
+
+    function Badge({ variant = "neutral", className = "", children }) {
+      const variants = {
+        neutral: "bg-slate-100 text-slate-700",
+        info: "bg-blue-50 text-blue-700",
+        success: "bg-emerald-50 text-emerald-700",
+        warning: "bg-yellow-100 text-yellow-800",
+        danger: "bg-red-50 text-red-700",
+      };
+      return (
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${variants[variant]} ${className}`}
+        >
+          {children}
+        </span>
+      );
+    }
+
+    // EditableCell — 클릭 시 인라인 input 으로 변환 (SecuritiesItemEditor 역할 흡수)
+    function EditableCell({ value, onChange, align = "left", className = "" }) {
+      const [editing, setEditing] = useState(false);
+      const [draft, setDraft] = useState(value);
+      const inputRef = useRef(null);
+
+      useEffect(() => {
+        if (editing && inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      }, [editing]);
+
+      useEffect(() => {
+        setDraft(value);
+      }, [value]);
+
+      const commit = () => {
+        setEditing(false);
+        if (draft !== value) onChange(draft);
+      };
+
+      const cancel = () => {
+        setDraft(value);
+        setEditing(false);
+      };
+
+      return (
+        <td
+          className={`editable-cell ${align === "right" ? "num" : ""} ${className}`}
+          onClick={() => !editing && setEditing(true)}
+          title="클릭하여 편집"
+        >
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") cancel();
+              }}
+            />
+          ) : (
+            <span>{value}</span>
+          )}
+        </td>
+      );
+    }
+
+    // 평가손익 등 양/음수에 따라 색상이 바뀌는 셀
+    function PnLCell({ value }) {
+      let color = "text-slate-600";
+      let prefix = "";
+      if (typeof value === "number") {
+        if (value > 0) {
+          color = "text-emerald-600";
+          prefix = "+";
+        } else if (value < 0) {
+          color = "text-red-600";
+        }
+      }
+      return (
+        <td className={`num font-medium ${color}`}>
+          {typeof value === "number"
+            ? `${prefix}₩${value.toLocaleString()}`
+            : value}
+        </td>
+      );
+    }
+
+    // ========================================
+    // ----------- Common / Layout -----------
+    // ========================================
+
+    function Header({ userEmail }) {
+      return (
+        <header className="bg-white border-b border-slate-200">
+          <div className="max-w-[1200px] mx-auto px-6 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">📑</span>
+              <div>
+                <h1 className="text-base font-semibold text-slate-800 leading-tight">
+                  KR2EN Statement · Securities Module
+                </h1>
+                <p className="text-xs text-slate-500 leading-tight">
+                  Prototype v1
+                </p>
+              </div>
+            </div>
+            <div className="text-sm text-slate-600">{userEmail}</div>
+          </div>
+        </header>
+      );
+    }
+
+    function PrototypeBanner() {
+      return (
+        <div className="bg-yellow-100 border-b border-yellow-200 text-yellow-900 text-sm">
+          <div className="max-w-[1200px] mx-auto px-6 py-2">
+            ⚠️ Prototype v1 — 더미 데이터입니다. 실제 업로드/추출/PDF는 Phase
+            2/3에서 구현됩니다.
+          </div>
+        </div>
+      );
+    }
+
+    // ========================================
+    // ----------- Page Components -----------
+    // ========================================
+
+    // 1) Statement Type Toggle
+    function StatementTypeToggle({ value, onChange }) {
+      const options = [
+        { key: "bank", label: "🏦 은행 거래내역서" },
+        { key: "securities", label: "📈 증권 거래내역서" },
+      ];
+      return (
+        <div className="inline-flex p-1 bg-slate-100 rounded-lg border border-slate-200">
+          {options.map((opt) => {
+            const active = value === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => onChange(opt.key)}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  active
+                    ? "bg-blue-600 text-white shadow"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // 2) Securities Upload Flow
+    function SecuritiesUploadFlow({ loaded, onLoadSample }) {
+      return (
+        <Card>
+          <CardBody>
+            <div className="border-2 border-dashed border-slate-300 rounded-lg p-10 flex flex-col items-center justify-center text-center bg-slate-50/40">
+              <div className="text-4xl mb-3">📄</div>
+              <p className="text-base font-medium text-slate-700">
+                PDF · JPG · PNG 업로드
+              </p>
+              <p className="text-xs text-slate-500 mt-1 mb-5">
+                증권사 거래내역서 파일을 드래그하거나 클릭하여 업로드하세요
+                (Phase 2 구현 예정)
+              </p>
+              <div className="flex items-center gap-3">
+                <Button variant="secondary" size="md" disabled>
+                  파일 선택
+                </Button>
+                <Button variant="primary" size="md" onClick={onLoadSample}>
+                  {loaded ? "샘플 데이터 다시 불러오기" : "샘플 데이터 불러오기"}
+                </Button>
+              </div>
+              {loaded && (
+                <div className="mt-4">
+                  <Badge variant="success">
+                    ✓ 샘플 데이터 로드 완료 — 아래 미리보기에서 확인하세요
+                  </Badge>
+                </div>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+      );
+    }
+
+    // 3) Securities Preview — 6개 카드를 묶음으로 렌더링
+    function SecuritiesPreview({ data, onUpdate }) {
+      const {
+        trades,
+        holdings,
+        dividends,
+        taxes,
+        cashFlow,
+        fx,
+      } = data;
+
+      const updateRow = (section, idx, key, newValue) => {
+        onUpdate(section, idx, key, newValue);
+      };
+
+      return (
+        <div className="space-y-6">
+          {/* Card 1: Trade History */}
+          <Card>
+            <CardHeader
+              icon="🧾"
+              title="Trade History"
+              subtitle="거래 내역 — 종목 · 매수매도 · 수량 · 단가 · 거래금액"
+              right={<Badge variant="info">{trades.length} 건</Badge>}
+            />
+            <CardBody className="overflow-x-auto">
+              <table className="preview">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Symbol</th>
+                    <th>Security Name (EN)</th>
+                    <th>Side</th>
+                    <th className="num">Qty</th>
+                    <th className="num">Price (KRW)</th>
+                    <th className="num">Amount (KRW)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trades.map((row, i) => (
+                    <tr key={i}>
+                      <EditableCell
+                        value={row.date}
+                        onChange={(v) => updateRow("trades", i, "date", v)}
+                      />
+                      <EditableCell
+                        value={row.symbol}
+                        onChange={(v) => updateRow("trades", i, "symbol", v)}
+                      />
+                      <EditableCell
+                        value={row.nameEn}
+                        onChange={(v) => updateRow("trades", i, "nameEn", v)}
+                      />
+                      <td>
+                        <Badge
+                          variant={row.side === "Buy" ? "info" : "warning"}
+                        >
+                          {row.side}
+                        </Badge>
+                      </td>
+                      <EditableCell
+                        align="right"
+                        value={row.qty}
+                        onChange={(v) => updateRow("trades", i, "qty", v)}
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.price}
+                        onChange={(v) => updateRow("trades", i, "price", v)}
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.amount}
+                        onChange={(v) => updateRow("trades", i, "amount", v)}
+                      />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+
+          {/* Card 2: Holdings & P/L */}
+          <Card>
+            <CardHeader
+              icon="📊"
+              title="Holdings & P/L"
+              subtitle="보유 종목 평가 — 평균단가 · 현재가 · 평가금액 · 평가손익"
+              right={<Badge variant="info">{holdings.length} 종목</Badge>}
+            />
+            <CardBody className="overflow-x-auto">
+              <table className="preview">
+                <thead>
+                  <tr>
+                    <th>Security Name (EN)</th>
+                    <th>Symbol</th>
+                    <th className="num">Qty</th>
+                    <th className="num">Avg Cost</th>
+                    <th className="num">Current Price</th>
+                    <th className="num">Market Value</th>
+                    <th className="num">Unrealized P/L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {holdings.map((row, i) => (
+                    <tr key={i}>
+                      <EditableCell
+                        value={row.nameEn}
+                        onChange={(v) => updateRow("holdings", i, "nameEn", v)}
+                      />
+                      <EditableCell
+                        value={row.symbol}
+                        onChange={(v) => updateRow("holdings", i, "symbol", v)}
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.qty}
+                        onChange={(v) => updateRow("holdings", i, "qty", v)}
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.avgCost}
+                        onChange={(v) =>
+                          updateRow("holdings", i, "avgCost", v)
+                        }
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.currentPrice}
+                        onChange={(v) =>
+                          updateRow("holdings", i, "currentPrice", v)
+                        }
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.marketValue}
+                        onChange={(v) =>
+                          updateRow("holdings", i, "marketValue", v)
+                        }
+                      />
+                      <PnLCell value={row.unrealizedPnL} />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+
+          {/* Card 3: Dividend Income */}
+          <Card>
+            <CardHeader
+              icon="💵"
+              title="Dividend Income"
+              subtitle="배당금 — 세전/세후 지급액"
+              right={<Badge variant="info">{dividends.length} 건</Badge>}
+            />
+            <CardBody className="overflow-x-auto">
+              <table className="preview">
+                <thead>
+                  <tr>
+                    <th>Payment Date</th>
+                    <th>Security Name (EN)</th>
+                    <th className="num">Gross (KRW)</th>
+                    <th className="num">Net (KRW)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dividends.map((row, i) => (
+                    <tr key={i}>
+                      <EditableCell
+                        value={row.date}
+                        onChange={(v) => updateRow("dividends", i, "date", v)}
+                      />
+                      <EditableCell
+                        value={row.nameEn}
+                        onChange={(v) =>
+                          updateRow("dividends", i, "nameEn", v)
+                        }
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.gross}
+                        onChange={(v) => updateRow("dividends", i, "gross", v)}
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.net}
+                        onChange={(v) => updateRow("dividends", i, "net", v)}
+                      />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+
+          {/* Card 4: Taxes */}
+          <Card>
+            <CardHeader
+              icon="🧮"
+              title="Taxes"
+              subtitle="세금 — 양도소득세 · 거래세"
+              right={<Badge variant="info">{taxes.length} 건</Badge>}
+            />
+            <CardBody className="overflow-x-auto">
+              <table className="preview">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th className="num">Transaction Tax (KRW)</th>
+                    <th className="num">Capital Gains Tax (KRW)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {taxes.map((row, i) => (
+                    <tr key={i}>
+                      <EditableCell
+                        value={row.date}
+                        onChange={(v) => updateRow("taxes", i, "date", v)}
+                      />
+                      <EditableCell
+                        value={row.description}
+                        onChange={(v) =>
+                          updateRow("taxes", i, "description", v)
+                        }
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.transactionTax}
+                        onChange={(v) =>
+                          updateRow("taxes", i, "transactionTax", v)
+                        }
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.capitalGainsTax}
+                        onChange={(v) =>
+                          updateRow("taxes", i, "capitalGainsTax", v)
+                        }
+                      />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+
+          {/* Card 5: Cash Movement */}
+          <Card>
+            <CardHeader
+              icon="💰"
+              title="Cash Movement"
+              subtitle="입출금 — 계좌 잔액 변동"
+              right={<Badge variant="info">{cashFlow.length} 건</Badge>}
+            />
+            <CardBody className="overflow-x-auto">
+              <table className="preview">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th className="num">Amount (KRW)</th>
+                    <th className="num">Balance (KRW)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashFlow.map((row, i) => (
+                    <tr key={i}>
+                      <EditableCell
+                        value={row.date}
+                        onChange={(v) => updateRow("cashFlow", i, "date", v)}
+                      />
+                      <td>
+                        <Badge
+                          variant={
+                            row.type === "Deposit" ? "success" : "danger"
+                          }
+                        >
+                          {row.type === "Deposit"
+                            ? "Deposit (입금)"
+                            : "Withdrawal (출금)"}
+                        </Badge>
+                      </td>
+                      <td
+                        className={`num font-medium ${
+                          row.amount >= 0
+                            ? "text-emerald-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {row.amount >= 0 ? "+" : ""}
+                        ₩{row.amount.toLocaleString()}
+                      </td>
+                      <EditableCell
+                        align="right"
+                        value={`₩${row.balance.toLocaleString()}`}
+                        onChange={(v) =>
+                          updateRow("cashFlow", i, "balance", v)
+                        }
+                      />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+
+          {/* Card 6: Currency Exchange */}
+          <Card>
+            <CardHeader
+              icon="💱"
+              title="Currency Exchange"
+              subtitle="환전 — 외화 환전 내역"
+              right={<Badge variant="info">{fx.length} 건</Badge>}
+            />
+            <CardBody className="overflow-x-auto">
+              <table className="preview">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>From → To</th>
+                    <th className="num">From Amount</th>
+                    <th className="num">To Amount</th>
+                    <th className="num">Rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fx.map((row, i) => (
+                    <tr key={i}>
+                      <EditableCell
+                        value={row.date}
+                        onChange={(v) => updateRow("fx", i, "date", v)}
+                      />
+                      <td>
+                        <span className="font-medium text-slate-700">
+                          {row.from} → {row.to}
+                        </span>
+                      </td>
+                      <EditableCell
+                        align="right"
+                        value={row.fromAmount}
+                        onChange={(v) =>
+                          updateRow("fx", i, "fromAmount", v)
+                        }
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.toAmount}
+                        onChange={(v) => updateRow("fx", i, "toAmount", v)}
+                      />
+                      <EditableCell
+                        align="right"
+                        value={row.rate}
+                        onChange={(v) => updateRow("fx", i, "rate", v)}
+                      />
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </CardBody>
+          </Card>
+        </div>
+      );
+    }
+
+    // 6) Bilingual Mapping View — 거래 내역만 한↔영 매핑
+    function BilingualMappingView({ trades, tradesKR }) {
+      return (
+        <Card>
+          <CardHeader
+            icon="🔁"
+            title="Bilingual Mapping"
+            subtitle="원문(한국어) ↔ 번역(영어) 매핑 미리보기 — 거래 내역"
+          />
+          <CardBody>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Left: Original (KR) */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant="neutral">Original</Badge>
+                  <span className="text-sm font-medium text-slate-700">
+                    한국어
+                  </span>
+                </div>
+                <div className="border border-slate-200 rounded-md overflow-hidden">
+                  <table className="preview">
+                    <thead>
+                      <tr>
+                        <th>거래일</th>
+                        <th>종목명</th>
+                        <th>구분</th>
+                        <th className="num">수량</th>
+                        <th className="num">단가</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tradesKR.map((row, i) => (
+                        <tr key={i}>
+                          <td>{row.date}</td>
+                          <td>{row.nameKr}</td>
+                          <td>{row.sideKr}</td>
+                          <td className="num">{row.qty}</td>
+                          <td className="num">{row.price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Right: Translated (EN) */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant="info">Translated</Badge>
+                  <span className="text-sm font-medium text-slate-700">
+                    English
+                  </span>
+                </div>
+                <div className="border border-slate-200 rounded-md overflow-hidden">
+                  <table className="preview">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Security Name</th>
+                        <th>Side</th>
+                        <th className="num">Qty</th>
+                        <th className="num">Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trades.map((row, i) => (
+                        <tr key={i}>
+                          <td>{row.date}</td>
+                          <td>{row.nameEn}</td>
+                          <td>{row.side}</td>
+                          <td className="num">{row.qty}</td>
+                          <td className="num">{row.price}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      );
+    }
+
+    // 7) Securities PDF Export
+    function SecuritiesPDFExport({ disabled }) {
+      const handleExport = () => {
+        alert(
+          "Phase 1 prototype — PDF export will be implemented in Phase 3."
+        );
+      };
+      return (
+        <div className="flex items-center justify-end gap-3">
+          <div className="text-sm text-slate-500">
+            완료된 미리보기를 영문 PDF로 내보내기
+          </div>
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={handleExport}
+            disabled={disabled}
+          >
+            📥 영문 PDF 다운로드
+          </Button>
+        </div>
+      );
+    }
+
+    // ========================================
+    // ----------- App Component -----------
+    // ========================================
+
+    // 더미 데이터 초기값
+    const INITIAL_DATA = {
+      trades: [
+        {
+          date: "2026-03-15",
+          symbol: "005930.KS",
+          nameEn: "Samsung Electronics Co., Ltd.",
+          nameKr: "삼성전자",
+          side: "Buy",
+          sideKr: "매수",
+          qty: "10",
+          price: "₩78,500",
+          amount: "₩785,000",
+        },
+        {
+          date: "2026-03-18",
+          symbol: "035420.KS",
+          nameEn: "NAVER Corporation",
+          nameKr: "NAVER",
+          side: "Sell",
+          sideKr: "매도",
+          qty: "5",
+          price: "₩215,000",
+          amount: "₩1,075,000",
+        },
+        {
+          date: "2026-04-02",
+          symbol: "069500.KS",
+          nameEn: "Samsung KODEX 200 ETF",
+          nameKr: "KODEX 200 ETF",
+          side: "Buy",
+          sideKr: "매수",
+          qty: "20",
+          price: "₩42,300",
+          amount: "₩846,000",
+        },
+      ],
+      holdings: [
+        {
+          symbol: "005930.KS",
+          nameEn: "Samsung Electronics Co., Ltd.",
+          qty: "50",
+          avgCost: "₩76,200",
+          currentPrice: "₩81,500",
+          marketValue: "₩4,075,000",
+          unrealizedPnL: 265000,
+        },
+        {
+          symbol: "035720.KS",
+          nameEn: "Kakao Corp.",
+          qty: "30",
+          avgCost: "₩52,100",
+          currentPrice: "₩48,800",
+          marketValue: "₩1,464,000",
+          unrealizedPnL: -99000,
+        },
+      ],
+      dividends: [
+        {
+          date: "2026-04-15",
+          nameEn: "Samsung Electronics Co., Ltd.",
+          gross: "₩72,800",
+          net: "₩61,605",
+        },
+        {
+          date: "2026-04-20",
+          nameEn: "LG Chem, Ltd.",
+          gross: "₩42,000",
+          net: "₩35,532",
+        },
+      ],
+      taxes: [
+        {
+          date: "2026-03-18",
+          description: "NAVER Sell — Transaction tax",
+          transactionTax: "₩2,687",
+          capitalGainsTax: "₩0",
+        },
+      ],
+      cashFlow: [
+        {
+          date: "2026-03-01",
+          type: "Deposit",
+          amount: 5000000,
+          balance: 5000000,
+        },
+        {
+          date: "2026-04-30",
+          type: "Withdrawal",
+          amount: -500000,
+          balance: 2341318,
+        },
+      ],
+      fx: [
+        {
+          date: "2026-04-10",
+          from: "KRW",
+          to: "USD",
+          fromAmount: "₩1,380,500",
+          toAmount: "$1,000.00",
+          rate: "1 USD = 1,380.50 KRW",
+        },
+      ],
+    };
+
+    function App() {
+      const [statementType, setStatementType] = useState("securities");
+      const [dataLoaded, setDataLoaded] = useState(false);
+      const [data, setData] = useState(INITIAL_DATA);
+
+      const handleLoadSample = useCallback(() => {
+        setData(INITIAL_DATA);
+        setDataLoaded(true);
+      }, []);
+
+      const handleUpdate = useCallback((section, idx, key, newValue) => {
+        setData((prev) => {
+          const nextSection = prev[section].map((row, i) =>
+            i === idx ? { ...row, [key]: newValue } : row
+          );
+          return { ...prev, [section]: nextSection };
+        });
+      }, []);
+
+      // 거래 내역 KR 뷰는 trades 에서 파생
+      const tradesKR = useMemo(
+        () =>
+          data.trades.map((t) => ({
+            date: t.date,
+            nameKr: t.nameKr,
+            sideKr: t.sideKr,
+            qty: t.qty,
+            price: t.price,
+          })),
+        [data.trades]
+      );
+
+      const isBank = statementType === "bank";
+
+      return (
+        <div className="min-h-screen">
+          <Header userEmail="doolysim7@gmail.com" />
+          <PrototypeBanner />
+
+          <main className="max-w-[1200px] mx-auto px-6 py-6 space-y-6">
+            {/* 1) Statement Type Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800">
+                  거래내역서 종류 선택
+                </h2>
+                <p className="text-sm text-slate-500">
+                  업로드할 명세서 유형을 선택하세요.
+                </p>
+              </div>
+              <StatementTypeToggle
+                value={statementType}
+                onChange={setStatementType}
+              />
+            </div>
+
+            {isBank ? (
+              <Card>
+                <CardBody>
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="text-4xl mb-3">🏦</div>
+                    <p className="text-base font-medium text-slate-700">
+                      은행 거래내역서 모듈
+                    </p>
+                    <p className="text-sm text-slate-500 mt-1">
+                      이 프로토타입(v1)은 증권 모듈에 집중합니다. 은행 모듈은
+                      기존 KR2EN Statement 앱을 참고하세요.
+                    </p>
+                  </div>
+                </CardBody>
+              </Card>
+            ) : (
+              <>
+                {/* 2) Upload Flow */}
+                <SecuritiesUploadFlow
+                  loaded={dataLoaded}
+                  onLoadSample={handleLoadSample}
+                />
+
+                {/* 3) Preview (6 cards) — 데이터 로드 전에도 보이도록 처리 */}
+                <SecuritiesPreview data={data} onUpdate={handleUpdate} />
+
+                {/* 6) Bilingual Mapping */}
+                <BilingualMappingView
+                  trades={data.trades}
+                  tradesKR={tradesKR}
+                />
+
+                {/* 7) PDF Export */}
+                <div className="pt-2 pb-8">
+                  <SecuritiesPDFExport disabled={false} />
+                </div>
+              </>
+            )}
+          </main>
+        </div>
+      );
+    }
+
+    // ========================================
+    // Rendering
+    // ========================================
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
