@@ -45,6 +45,9 @@ const IMAGEKIT_URL_ENDPOINT = (
 
 const PRICE_PER_PAGE = parseInt(process.env.PRICE_PER_PAGE || '2000', 10);
 
+const DEV_SKIP_TOSS_CONFIRM =
+  process.env.DEV_SKIP_TOSS_CONFIRM === '1' || process.env.DEV_SKIP_TOSS_CONFIRM === 'true';
+
 // ------------------------------------
 // DB
 // ------------------------------------
@@ -605,23 +608,32 @@ app.post('/api/payments/confirm', authRequired, async (req, res) => {
       return res.json({ success: true, data: { conversionId: p.conversion_id, alreadyPaid: true } });
     }
 
-    // Server-side Toss confirm with Secret Key (never expose secret to client)
-    const auth = Buffer.from(`${TOSS_SECRET_KEY}:`).toString('base64');
-    const resp = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${auth}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ paymentKey, orderId, amount }),
-    });
-    const tossData = await resp.json();
-    if (!resp.ok) {
-      await pool.query(
-        `UPDATE trans_payments SET status='FAILED', payment_key=$1, raw=$2 WHERE id=$3`,
-        [paymentKey, JSON.stringify(tossData), p.id]
-      );
-      return res.status(400).json({ success: false, message: tossData?.message || '결제 승인 실패', code: tossData?.code });
+    // Server-side Toss confirm with Secret Key (never expose secret to client).
+    // Dev guard: when DEV_SKIP_TOSS_CONFIRM=1 and paymentKey starts with "dev_skip_",
+    // bypass the Toss API call so the post-payment flow can be exercised end-to-end
+    // without going through the Toss sandbox's phone/ISP auth. Never enable in prod.
+    let tossData;
+    if (DEV_SKIP_TOSS_CONFIRM && paymentKey.startsWith('dev_skip_')) {
+      console.warn('[dev] skipping Toss confirm for paymentKey', paymentKey);
+      tossData = { paymentKey, orderId, totalAmount: amount, status: 'DONE', method: 'DEV_SKIP', _dev: true };
+    } else {
+      const auth = Buffer.from(`${TOSS_SECRET_KEY}:`).toString('base64');
+      const resp = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${auth}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paymentKey, orderId, amount }),
+      });
+      tossData = await resp.json();
+      if (!resp.ok) {
+        await pool.query(
+          `UPDATE trans_payments SET status='FAILED', payment_key=$1, raw=$2 WHERE id=$3`,
+          [paymentKey, JSON.stringify(tossData), p.id]
+        );
+        return res.status(400).json({ success: false, message: tossData?.message || '결제 승인 실패', code: tossData?.code });
+      }
     }
 
     await pool.query(
