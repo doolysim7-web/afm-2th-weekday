@@ -336,6 +336,49 @@ Rules:
 - Do not include any markdown, comments, or explanation — JSON only.
 `;
 
+// Securities (증권) — extract the 8 item categories into a structured object instead of a flat table.
+const SECURITIES_SCHEMA = `{
+  "title": string,                          // English document title (e.g., "Brokerage Statement — Kiwoom Securities")
+  "periodStart": string,                    // YYYY-MM-DD if visible, else ""
+  "periodEnd": string,
+  "trades":             [{ "date": "YYYY-MM-DD", "symbol": "English company name", "tickerCode": "e.g. 005930.KS", "side": "Buy" | "Sell", "qty": "10", "unitPriceKRW": "78500", "amountKRW": "785000" }],
+  "holdings":           [{ "symbol": "", "tickerCode": "", "qty": "", "avgCostKRW": "", "currentPriceKRW": "", "marketValueKRW": "", "unrealizedPnLKRW": "" }],
+  "dividends":          [{ "date": "", "symbol": "", "tickerCode": "", "grossKRW": "", "netKRW": "" }],
+  "taxes":              [{ "date": "", "description": "e.g. NAVER Sell — Transaction tax", "transactionTaxKRW": "", "capitalGainsTaxKRW": "" }],
+  "cashMovements":      [{ "date": "", "type": "Deposit" | "Withdrawal", "amountKRW": "", "balanceKRW": "" }],
+  "currencyExchanges":  [{ "date": "", "from": "KRW", "to": "USD", "fromAmount": "", "toAmount": "", "rate": "e.g. 1 USD = 1,380.50 KRW" }]
+}`;
+
+const SECURITIES_RULES = `Rules:
+- Translate every Korean string. Keep numbers, dates as plain digits (no thousand separators inside numeric fields except "rate" which is human-readable).
+- For Korean company names use the widely-known English name + KRX ticker with .KS (KOSPI) or .KQ (KOSDAQ) suffix. Examples: 삼성전자 -> Samsung Electronics Co., Ltd. / 005930.KS; NAVER -> NAVER Corporation / 035420.KS; 카카오 -> Kakao Corp. / 035720.KS; LG화학 -> LG Chem, Ltd. / 051910.KS; KODEX 200 -> Samsung KODEX 200 ETF / 069500.KS.
+- Side must be exactly "Buy" or "Sell". Cash type must be exactly "Deposit" or "Withdrawal".
+- If an item category is not present in the source, return an empty array [] for that key — never omit the key.
+- Be CONSISTENT: the same Korean entity must always translate the same way.
+- Output JSON only — no markdown, comments, or extra prose.`;
+
+const SECURITIES_ROWS_PROMPT = `You convert a Korean brokerage/securities transaction statement (provided as a CSV/Excel table) into a structured English JSON for foreign customers. Categorize each row into one of: trades, holdings, dividends, taxes, cashMovements, currencyExchanges. A single source row may map to one category only.
+
+Return STRICT JSON with this shape:
+${SECURITIES_SCHEMA}
+
+${SECURITIES_RULES}
+
+Input headers (Korean):
+{HEADERS}
+
+Input rows (Korean, JSON):
+{ROWS}
+`;
+
+const SECURITIES_IMAGE_PROMPT = `You see a screenshot of a Korean brokerage/securities transaction statement. Extract its contents into a structured English JSON for foreign customers.
+
+Return STRICT JSON with this shape:
+${SECURITIES_SCHEMA}
+
+${SECURITIES_RULES}
+`;
+
 // ------------------------------------
 // Translation helpers (called server-side AFTER payment confirm)
 // ------------------------------------
@@ -381,8 +424,73 @@ async function translateImage(imageUrl) {
   };
 }
 
+const SECURITIES_KEYS = ['trades', 'holdings', 'dividends', 'taxes', 'cashMovements', 'currencyExchanges'];
+
+function normalizeSecurities(out) {
+  const obj = (out && typeof out === 'object') ? out : {};
+  const norm = {
+    title: String(obj.title || ''),
+    periodStart: String(obj.periodStart || obj.period_start || ''),
+    periodEnd: String(obj.periodEnd || obj.period_end || ''),
+  };
+  for (const k of SECURITIES_KEYS) {
+    norm[k] = Array.isArray(obj[k]) ? obj[k] : [];
+  }
+  return norm;
+}
+
+async function extractSecuritiesFromRows(headers, rows) {
+  const prompt = SECURITIES_ROWS_PROMPT
+    .replace('{HEADERS}', JSON.stringify(headers))
+    .replace('{ROWS}', JSON.stringify(rows));
+  const out = await callGemini([{ text: prompt }]);
+  const norm = normalizeSecurities(out);
+  const total = SECURITIES_KEYS.reduce((sum, k) => sum + norm[k].length, 0);
+  if (total === 0) throw new Error('증권 추출 결과가 비어 있습니다.');
+  return norm;
+}
+
+async function extractSecuritiesFromImage(imageUrl) {
+  let parsed;
+  try { parsed = new URL(imageUrl); } catch { throw new Error('유효하지 않은 이미지 URL입니다.'); }
+  if (!/(^|\.)imagekit\.io$/i.test(parsed.hostname)) {
+    throw new Error('ImageKit URL만 허용됩니다.');
+  }
+  const upstream = await fetch(imageUrl);
+  if (!upstream.ok) throw new Error(`이미지 다운로드 실패: ${upstream.status}`);
+  const mime = upstream.headers.get('content-type') || 'image/png';
+  const buf = Buffer.from(await upstream.arrayBuffer());
+  const b64 = buf.toString('base64');
+  const out = await callGemini([
+    { text: SECURITIES_IMAGE_PROMPT },
+    { inline_data: { mime_type: mime, data: b64 } },
+  ]);
+  const norm = normalizeSecurities(out);
+  const total = SECURITIES_KEYS.reduce((sum, k) => sum + norm[k].length, 0);
+  if (total === 0) throw new Error('이미지에서 증권 거래 항목을 추출하지 못했습니다.');
+  return norm;
+}
+
 async function runTranslationFor(conversionRow) {
   const src = conversionRow.source_data || {};
+  const isSecurities = conversionRow.document_type === 'securities';
+  if (isSecurities) {
+    const r = conversionRow.source_type === 'image'
+      ? await extractSecuritiesFromImage(conversionRow.source_image_url)
+      : await extractSecuritiesFromRows(src.headers || [], src.rows || []);
+    return {
+      kind: 'securities',
+      title: conversionRow.title || r.title,
+      periodStart: conversionRow.period_start || r.periodStart,
+      periodEnd: conversionRow.period_end || r.periodEnd,
+      trades: r.trades,
+      holdings: r.holdings,
+      dividends: r.dividends,
+      taxes: r.taxes,
+      cashMovements: r.cashMovements,
+      currencyExchanges: r.currencyExchanges,
+    };
+  }
   if (conversionRow.source_type === 'image') {
     const r = await translateImage(conversionRow.source_image_url);
     return {
@@ -418,6 +526,7 @@ app.post('/api/conversions', authRequired, async (req, res) => {
     const periodStart = String(body.periodStart || '').slice(0, 50);
     const periodEnd = String(body.periodEnd || '').slice(0, 50);
     const sourceType = ['excel', 'csv', 'image'].includes(body.sourceType) ? body.sourceType : 'excel';
+    const documentType = body.documentType === 'securities' ? 'securities' : 'bank';
     const sourceData = body.sourceData ?? {};
     const sourceImageUrl = body.sourceImageUrl ? String(body.sourceImageUrl).slice(0, 2000) : null;
 
@@ -441,9 +550,9 @@ app.post('/api/conversions', authRequired, async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO trans_conversions
-        (user_id, title, period_start, period_end, source_type, source_data, translated_data, page_count, amount, source_image_url)
-       VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7, $8, $9)
-       RETURNING id, title, period_start, period_end, source_type, page_count, amount, paid, created_at`,
+        (user_id, title, period_start, period_end, source_type, source_data, translated_data, page_count, amount, source_image_url, document_type)
+       VALUES ($1, $2, $3, $4, $5, $6, '{}'::jsonb, $7, $8, $9, $10)
+       RETURNING id, title, period_start, period_end, source_type, document_type, page_count, amount, paid, created_at`,
       [
         req.user.id,
         title,
@@ -454,6 +563,7 @@ app.post('/api/conversions', authRequired, async (req, res) => {
         pageCount,
         amount,
         sourceImageUrl,
+        documentType,
       ]
     );
     res.status(201).json({ success: true, data: result.rows[0] });
@@ -469,7 +579,7 @@ app.post('/api/conversions/:id/translate', authRequired, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: '잘못된 ID' });
     const result = await pool.query(
-      `SELECT id, user_id, title, period_start, period_end, source_type,
+      `SELECT id, user_id, title, period_start, period_end, source_type, document_type,
               source_data, translated_data, source_image_url, paid
        FROM trans_conversions WHERE id = $1`,
       [id]
@@ -500,7 +610,7 @@ app.post('/api/conversions/:id/translate', authRequired, async (req, res) => {
 app.get('/api/conversions', authRequired, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, title, period_start, period_end, source_type, page_count, amount,
+      `SELECT id, title, period_start, period_end, source_type, document_type, page_count, amount,
               paid, paid_at, created_at
        FROM trans_conversions
        WHERE user_id = $1
@@ -518,7 +628,7 @@ app.get('/api/conversions/:id', authRequired, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: '잘못된 ID' });
     const result = await pool.query(
-      `SELECT id, user_id, title, period_start, period_end, source_type,
+      `SELECT id, user_id, title, period_start, period_end, source_type, document_type,
               source_data, translated_data, page_count, amount,
               source_image_url, paid, paid_at, created_at
        FROM trans_conversions WHERE id = $1`,
@@ -651,7 +761,7 @@ app.post('/api/payments/confirm', authRequired, async (req, res) => {
     let translationError = '';
     try {
       const cvRow = await pool.query(
-        `SELECT id, title, period_start, period_end, source_type, source_data, source_image_url
+        `SELECT id, title, period_start, period_end, source_type, document_type, source_data, source_image_url
          FROM trans_conversions WHERE id = $1`,
         [p.conversion_id]
       );

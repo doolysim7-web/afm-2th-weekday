@@ -199,6 +199,7 @@ function RegisterPage({ onLogin }) {
 
 // ----------- Upload -----------
 function UploadPage() {
+  const [docType, setDocType] = useState('bank'); // bank | securities
   const [mode, setMode] = useState('table'); // table | image
   const [file, setFile] = useState(null);
   const [headers, setHeaders] = useState([]);
@@ -243,6 +244,7 @@ function UploadPage() {
         method: 'POST',
         body: {
           title, periodStart, periodEnd, sourceType,
+          documentType: docType,
           sourceData: { headers, rows },
         },
       });
@@ -279,6 +281,7 @@ function UploadPage() {
           periodStart,
           periodEnd,
           sourceType: 'image',
+          documentType: docType,
           sourceData: { imageUrl },
           sourceImageUrl: imageUrl,
         },
@@ -293,6 +296,23 @@ function UploadPage() {
       <Card className="p-6">
         <h1 className="text-xl font-bold mb-1">새 변환</h1>
         <p className="text-sm text-slate-500 mb-4">엑셀/CSV 또는 거래내역 캡처 이미지를 업로드하면 영어로 변환됩니다.</p>
+
+        <div className="mb-4">
+          <label className="block text-sm text-slate-600 mb-1">거래내역서 종류</label>
+          <div className="flex gap-2">
+            <button
+              className={`px-3 py-2 rounded text-sm border ${docType === 'bank' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}
+              onClick={() => setDocType('bank')}
+            >🏦 은행 거래내역서</button>
+            <button
+              className={`px-3 py-2 rounded text-sm border ${docType === 'securities' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300'}`}
+              onClick={() => setDocType('securities')}
+            >📈 증권 거래내역서</button>
+          </div>
+          {docType === 'securities' && (
+            <p className="text-xs text-slate-500 mt-2">증권 모드: 종목명·매수매도·수량·평가손익·배당·세금·예수금·환전 8개 항목을 구조화해 영문 변환합니다.</p>
+          )}
+        </div>
 
         <div className="flex gap-2 mb-4">
           <button
@@ -526,6 +546,154 @@ function PayPage({ id, user }) {
 }
 
 // ----------- Result (download) -----------
+// ----------- Securities helpers -----------
+const SEC_CAT_KEYS = ['trades', 'holdings', 'dividends', 'taxes', 'cashMovements', 'currencyExchanges'];
+function secTotal(t) {
+  return SEC_CAT_KEYS.reduce((s, k) => s + ((t && Array.isArray(t[k]) ? t[k].length : 0)), 0);
+}
+function fmtKRW(v) {
+  if (v === '' || v === null || v === undefined) return '';
+  const n = Number(String(v).replace(/[^0-9.-]/g, ''));
+  if (!Number.isFinite(n)) return String(v);
+  return n.toLocaleString('en-US');
+}
+function pnlClass(v) {
+  const n = Number(String(v).replace(/[^0-9.-]/g, ''));
+  if (!Number.isFinite(n) || n === 0) return 'text-slate-500';
+  return n > 0 ? 'text-emerald-700' : 'text-rose-700';
+}
+function pnlPrefix(v) {
+  const n = Number(String(v).replace(/[^0-9.-]/g, ''));
+  if (!Number.isFinite(n) || n === 0) return '';
+  return n > 0 ? '+' : '';
+}
+
+function SecCard({ title, subtitle, count, children }) {
+  return (
+    <div className="border border-slate-200 rounded-lg bg-white p-4 mb-4">
+      <div className="flex items-baseline justify-between mb-3">
+        <div>
+          <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+        </div>
+        <span className="text-xs text-slate-500">{count}건</span>
+      </div>
+      {count > 0 ? children : <p className="text-sm text-slate-400">데이터 없음</p>}
+    </div>
+  );
+}
+
+function SecuritiesResultView({ t }) {
+  const trades = t.trades || [];
+  const holdings = t.holdings || [];
+  const dividends = t.dividends || [];
+  const taxes = t.taxes || [];
+  const cash = t.cashMovements || [];
+  const fx = t.currencyExchanges || [];
+  return (
+    <>
+      <SecCard title="Trade History" subtitle="거래 내역 — 종목·매수매도·수량·단가·거래금액" count={trades.length}>
+        <table className="preview">
+          <thead><tr>
+            <th>Date</th><th>Symbol</th><th>Ticker</th><th>Side</th>
+            <th className="num">Qty</th><th className="num">Price (KRW)</th><th className="num">Amount (KRW)</th>
+          </tr></thead>
+          <tbody>{trades.map((r, i) => (
+            <tr key={i}>
+              <td>{r.date}</td>
+              <td>{r.symbol}</td>
+              <td className="font-mono text-xs">{r.tickerCode}</td>
+              <td>{r.side === 'Buy' ? <span className="inline-block bg-emerald-100 text-emerald-800 text-xs px-1.5 py-0.5 rounded">Buy</span> : r.side === 'Sell' ? <span className="inline-block bg-rose-100 text-rose-800 text-xs px-1.5 py-0.5 rounded">Sell</span> : r.side}</td>
+              <td className="num">{fmtKRW(r.qty)}</td>
+              <td className="num">₩{fmtKRW(r.unitPriceKRW)}</td>
+              <td className="num">₩{fmtKRW(r.amountKRW)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </SecCard>
+
+      <SecCard title="Holdings & P/L" subtitle="보유 종목 평가 — 현재가·평가금액·평가손익" count={holdings.length}>
+        <table className="preview">
+          <thead><tr>
+            <th>Symbol</th><th>Ticker</th>
+            <th className="num">Qty</th><th className="num">Avg Cost</th><th className="num">Current Price</th>
+            <th className="num">Market Value</th><th className="num">Unrealized P/L</th>
+          </tr></thead>
+          <tbody>{holdings.map((r, i) => (
+            <tr key={i}>
+              <td>{r.symbol}</td>
+              <td className="font-mono text-xs">{r.tickerCode}</td>
+              <td className="num">{fmtKRW(r.qty)}</td>
+              <td className="num">₩{fmtKRW(r.avgCostKRW)}</td>
+              <td className="num">₩{fmtKRW(r.currentPriceKRW)}</td>
+              <td className="num">₩{fmtKRW(r.marketValueKRW)}</td>
+              <td className={`num font-medium ${pnlClass(r.unrealizedPnLKRW)}`}>{pnlPrefix(r.unrealizedPnLKRW)}₩{fmtKRW(r.unrealizedPnLKRW)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </SecCard>
+
+      <SecCard title="Dividend Income" subtitle="배당금 — 세전·세후" count={dividends.length}>
+        <table className="preview">
+          <thead><tr><th>Payment Date</th><th>Symbol</th><th>Ticker</th><th className="num">Gross (KRW)</th><th className="num">Net (KRW)</th></tr></thead>
+          <tbody>{dividends.map((r, i) => (
+            <tr key={i}>
+              <td>{r.date}</td>
+              <td>{r.symbol}</td>
+              <td className="font-mono text-xs">{r.tickerCode}</td>
+              <td className="num">₩{fmtKRW(r.grossKRW)}</td>
+              <td className="num">₩{fmtKRW(r.netKRW)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </SecCard>
+
+      <SecCard title="Taxes" subtitle="세금 — 거래세·양도소득세" count={taxes.length}>
+        <table className="preview">
+          <thead><tr><th>Date</th><th>Description</th><th className="num">Transaction Tax (KRW)</th><th className="num">Capital Gains Tax (KRW)</th></tr></thead>
+          <tbody>{taxes.map((r, i) => (
+            <tr key={i}>
+              <td>{r.date}</td>
+              <td>{r.description}</td>
+              <td className="num">₩{fmtKRW(r.transactionTaxKRW)}</td>
+              <td className="num">₩{fmtKRW(r.capitalGainsTaxKRW)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </SecCard>
+
+      <SecCard title="Cash Movement" subtitle="입출금 — 예수금 잔액 포함" count={cash.length}>
+        <table className="preview">
+          <thead><tr><th>Date</th><th>Type</th><th className="num">Amount (KRW)</th><th className="num">Balance (KRW)</th></tr></thead>
+          <tbody>{cash.map((r, i) => (
+            <tr key={i}>
+              <td>{r.date}</td>
+              <td>{r.type === 'Deposit' ? <span className="inline-block bg-emerald-100 text-emerald-800 text-xs px-1.5 py-0.5 rounded">Deposit</span> : r.type === 'Withdrawal' ? <span className="inline-block bg-amber-100 text-amber-800 text-xs px-1.5 py-0.5 rounded">Withdrawal</span> : r.type}</td>
+              <td className={`num ${r.type === 'Withdrawal' ? 'text-rose-700' : 'text-emerald-700'}`}>{r.type === 'Withdrawal' ? '-' : '+'}₩{fmtKRW(r.amountKRW)}</td>
+              <td className="num">₩{fmtKRW(r.balanceKRW)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </SecCard>
+
+      <SecCard title="Currency Exchange" subtitle="환전 — 해외주식 거래용" count={fx.length}>
+        <table className="preview">
+          <thead><tr><th>Date</th><th>From → To</th><th className="num">From Amount</th><th className="num">To Amount</th><th>Rate</th></tr></thead>
+          <tbody>{fx.map((r, i) => (
+            <tr key={i}>
+              <td>{r.date}</td>
+              <td>{r.from} → {r.to}</td>
+              <td className="num">{fmtKRW(r.fromAmount)}</td>
+              <td className="num">{fmtKRW(r.toAmount)}</td>
+              <td className="text-xs text-slate-600">{r.rate}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </SecCard>
+    </>
+  );
+}
+
 function ResultPage({ id }) {
   const [cv, setCv] = useState(null);
   const [err, setErr] = useState('');
@@ -561,10 +729,12 @@ function ResultPage({ id }) {
   }
 
   const t = cv.translated_data || {};
+  const isSecurities = t.kind === 'securities';
   const headers = t.headers || [];
   const rows = t.rows || [];
+  const isEmpty = isSecurities ? secTotal(t) === 0 : (headers.length === 0 || rows.length === 0);
 
-  if (headers.length === 0 || rows.length === 0) {
+  if (isEmpty) {
     return (
       <div className="max-w-2xl mx-auto p-6">
         <Card className="p-6">
@@ -584,10 +754,28 @@ function ResultPage({ id }) {
   const period = (t.periodStart || t.periodEnd) ? `Period: ${t.periodStart || '—'} ~ ${t.periodEnd || '—'}` : '';
 
   const downloadExcel = () => {
-    const aoa = [headers, ...rows];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Statement');
+    if (isSecurities) {
+      const sheetSpecs = [
+        ['Trades', t.trades || [], ['date', 'symbol', 'tickerCode', 'side', 'qty', 'unitPriceKRW', 'amountKRW']],
+        ['Holdings', t.holdings || [], ['symbol', 'tickerCode', 'qty', 'avgCostKRW', 'currentPriceKRW', 'marketValueKRW', 'unrealizedPnLKRW']],
+        ['Dividends', t.dividends || [], ['date', 'symbol', 'tickerCode', 'grossKRW', 'netKRW']],
+        ['Taxes', t.taxes || [], ['date', 'description', 'transactionTaxKRW', 'capitalGainsTaxKRW']],
+        ['CashMovements', t.cashMovements || [], ['date', 'type', 'amountKRW', 'balanceKRW']],
+        ['CurrencyExchanges', t.currencyExchanges || [], ['date', 'from', 'to', 'fromAmount', 'toAmount', 'rate']],
+      ];
+      let added = 0;
+      sheetSpecs.forEach(([name, list, cols]) => {
+        if (!list.length) return;
+        const aoa = [cols, ...list.map(r => cols.map(c => r[c] ?? ''))];
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+        added++;
+      });
+      if (added === 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['(empty)']]), 'Statement');
+    } else {
+      const aoa = [headers, ...rows];
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Statement');
+    }
     const filename = `${(docTitle || 'statement').replace(/[\/\\?%*:|"<>]/g, '_')}.xlsx`;
     XLSX.writeFile(wb, filename);
   };
@@ -621,18 +809,25 @@ function ResultPage({ id }) {
         </div>
 
         <div ref={previewRef} className="pdf-page bg-white p-6">
-          <div className="mb-4">
-            <h1 className="text-2xl font-bold">{docTitle}</h1>
-            {period && <p className="text-slate-600 text-sm mt-1">{period}</p>}
+          <div className="mb-4 flex items-baseline justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">{docTitle}</h1>
+              {period && <p className="text-slate-600 text-sm mt-1">{period}</p>}
+            </div>
+            {isSecurities && <span className="inline-block bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded">Securities Statement</span>}
           </div>
-          <table className="preview">
-            <thead><tr>{headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr key={i}>{r.map((c, j) => <td key={j} className={isNumberCell(c) ? 'num' : ''}>{c}</td>)}</tr>
-              ))}
-            </tbody>
-          </table>
+          {isSecurities ? (
+            <SecuritiesResultView t={t} />
+          ) : (
+            <table className="preview">
+              <thead><tr>{headers.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i}>{r.map((c, j) => <td key={j} className={isNumberCell(c) ? 'num' : ''}>{c}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          )}
           <p className="text-xs text-slate-400 mt-3">This document was generated for foreign customer reference. Not an official bank-issued statement.</p>
         </div>
       </Card>
