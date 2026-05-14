@@ -95,6 +95,34 @@ function navigate(to) {
 }
 
 // ----------- Layout -----------
+const WHATS_NEW_KEY = 'kr2en_seen_v1_securities';
+const WHATS_NEW_URL = 'https://github.com/doolysim7-web/afm-2th-weekday/releases/tag/v1.0-securities';
+
+function WhatsNewBanner() {
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(WHATS_NEW_KEY) === '1');
+  if (dismissed) return null;
+  const dismiss = () => {
+    localStorage.setItem(WHATS_NEW_KEY, '1');
+    setDismissed(true);
+  };
+  return (
+    <div className="bg-blue-50 border-b border-blue-100">
+      <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="inline-flex items-center bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 rounded">NEW</span>
+          <span className="text-slate-800 truncate">
+            <span className="font-semibold">증권 거래내역서 변환</span>이 추가되었습니다 — 매수·매도, 평가손익, 배당, 양도세, 환전 등 8개 항목을 영문 PDF로 변환합니다.
+          </span>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          <a href={WHATS_NEW_URL} target="_blank" rel="noreferrer" className="text-blue-700 hover:text-blue-900 underline whitespace-nowrap">릴리스 노트</a>
+          <button onClick={dismiss} className="text-slate-400 hover:text-slate-700" aria-label="닫기">✕</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Header({ user }) {
   return (
     <header className="bg-white border-b border-slate-200">
@@ -307,9 +335,9 @@ function UploadPage() {
               onClick={() => setDocType('bank')}
             >🏦 은행 거래내역서</button>
             <button
-              className={`px-3 py-2 rounded text-sm border ${docType === 'securities' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300'}`}
+              className={`relative px-3 py-2 rounded text-sm border ${docType === 'securities' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-300'}`}
               onClick={() => setDocType('securities')}
-            >📈 증권 거래내역서</button>
+            >📈 증권 거래내역서<span className="absolute -top-2 -right-2 bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded leading-none">NEW</span></button>
           </div>
           {docType === 'securities' && (
             <p className="text-xs text-slate-500 mt-2">증권 모드: 종목명·매수매도·수량·평가손익·배당·세금·예수금·환전 8개 항목을 구조화해 영문 변환합니다.</p>
@@ -1033,7 +1061,7 @@ function App() {
   else if (route === '/payment-failed') body = <PayFailedPage />;
   else body = <UploadPage />;
 
-  return <><Header user={user} />{body}</>;
+  return <><Header user={user} /><WhatsNewBanner />{body}</>;
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
