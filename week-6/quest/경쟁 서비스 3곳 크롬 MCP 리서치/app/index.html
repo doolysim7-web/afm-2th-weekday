@@ -1040,8 +1040,8 @@ function App() {
   }
 
   // Public routes
-  if (route === '/login') return <><Header user={user} /><LoginPage onLogin={setUser} /></>;
-  if (route === '/register') return <><Header user={user} /><RegisterPage onLogin={setUser} /></>;
+  if (route === '/login') return <><Header user={user} /><WhatsNewBanner /><LoginPage onLogin={setUser} /></>;
+  if (route === '/register') return <><Header user={user} /><WhatsNewBanner /><RegisterPage onLogin={setUser} /></>;
 
   // Auth-required
   if (!user) {
