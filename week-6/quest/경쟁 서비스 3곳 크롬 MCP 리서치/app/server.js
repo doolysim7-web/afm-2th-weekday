@@ -17,7 +17,7 @@ const DATABASE_URL = (
 ).trim();
 
 const GEMINI_API_KEY = (
-  process.env.GEMINI_API_KEY || 'AIzaSyDbPeADda99Km-KYrI3xzmD5PgIpUsInD0'
+  process.env.GEMINI_API_KEY || 'AIzaSyB7TW2CYSkOKrrZGs2a2yjMGvK9eMouOnk'
 ).trim();
 const GEMINI_MODEL = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
 
