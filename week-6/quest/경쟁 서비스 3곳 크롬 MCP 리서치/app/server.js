@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -355,7 +356,24 @@ const SECURITIES_RULES = `Rules:
 - Side must be exactly "Buy" or "Sell". Cash type must be exactly "Deposit" or "Withdrawal".
 - If an item category is not present in the source, return an empty array [] for that key — never omit the key.
 - Be CONSISTENT: the same Korean entity must always translate the same way.
-- Output JSON only — no markdown, comments, or extra prose.`;
+- Output JSON only — no markdown, comments, or extra prose.
+
+Tricky-case guidance (read carefully):
+
+A. Dividend "세후 (세전 ₩X)" — the amount column shows the after-tax (net) amount, and the memo shows the pre-tax (gross) amount in parentheses.
+   Input row example: ["2026-04-15", "배당", "삼성전자", "", "", "61605", "세후 (세전 ₩72,800)"]
+   → dividends[]: { "date": "2026-04-15", "symbol": "Samsung Electronics Co., Ltd.", "tickerCode": "005930.KS", "grossKRW": "72800", "netKRW": "61605" }
+   NEVER set grossKRW and netKRW to the same value when "세전" appears in the memo.
+
+B. Side detection — "매수" = Buy, "매도" = Sell. Other patterns: "매입"/"buy"/"+" → Buy; "매각"/"sell"/"-" → Sell. Never leave Side blank for a row that has a quantity and unit price.
+
+C. Currency exchange — extract the from/to currencies and rate cleanly even if the source row crams everything into one cell.
+   Input row example: ["2026-04-10", "환전", "KRW→USD", "", "1380.50", "1380500", "USD 1000"]
+   → currencyExchanges[]: { "date": "2026-04-10", "from": "KRW", "to": "USD", "fromAmount": "1380500", "toAmount": "1000", "rate": "1 USD = 1,380.50 KRW" }
+
+D. Korean number parsing — strip ₩, commas, spaces from numeric values before placing them in JSON. "₩1,380,500" → "1380500".
+
+E. Categorization — a row with both Buy/Sell and 양도소득세/거래세 should produce ONE trade row in trades[] AND a separate row in taxes[] (use the memo/description for the tax). Do not skip either.`;
 
 const SECURITIES_ROWS_PROMPT = `You convert a Korean brokerage/securities transaction statement (provided as a CSV/Excel table) into a structured English JSON for foreign customers. Categorize each row into one of: trades, holdings, dividends, taxes, cashMovements, currencyExchanges. A single source row may map to one category only.
 
@@ -426,6 +444,87 @@ async function translateImage(imageUrl) {
 
 const SECURITIES_KEYS = ['trades', 'holdings', 'dividends', 'taxes', 'cashMovements', 'currencyExchanges'];
 
+// Curated Korean stock/ETF → canonical English name + KRX ticker map.
+// Used to canonicalize Gemini output so the same entity always renders the same way,
+// regardless of how Gemini phrased it ("Samsung Electronics" vs "Samsung Electronics Co., Ltd.").
+const KR_TICKER_MAP = (() => {
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, 'kr_ticker_map.json'), 'utf8');
+    const parsed = JSON.parse(raw);
+    const flat = {};
+    const groups = [parsed.stocks, parsed.etfs];
+    for (const g of groups) {
+      if (!g) continue;
+      for (const [ko, v] of Object.entries(g)) {
+        if (!v?.en || !v?.ticker) continue;
+        flat[ko] = { en: v.en, ticker: v.ticker };
+        if (Array.isArray(v.aliases)) {
+          for (const a of v.aliases) flat[a] = { en: v.en, ticker: v.ticker };
+        }
+      }
+    }
+    return flat;
+  } catch (err) {
+    console.warn('[KR_TICKER_MAP] load failed:', err.message);
+    return {};
+  }
+})();
+console.log(`[KR_TICKER_MAP] loaded ${Object.keys(KR_TICKER_MAP).length} entries (incl. aliases)`);
+
+const KR_TICKER_REVERSE_EN = (() => {
+  const idx = {};
+  for (const [ko, v] of Object.entries(KR_TICKER_MAP)) {
+    // Normalized English key (lowercase, collapse whitespace, strip trailing "co., ltd." / "inc." / "corp.")
+    const norm = String(v.en).toLowerCase().replace(/\s+/g, ' ').trim();
+    idx[norm] = { ko, en: v.en, ticker: v.ticker };
+    const stripped = norm.replace(/[,.]/g, '').replace(/\s(co\sltd|inc|corp(oration)?|corporation|ltd|company|group|holdings)$/i, '').trim();
+    if (stripped && stripped !== norm) idx[stripped] = { ko, en: v.en, ticker: v.ticker };
+  }
+  return idx;
+})();
+
+function lookupTicker(rawSymbol) {
+  if (!rawSymbol) return null;
+  const s = String(rawSymbol).trim();
+  if (KR_TICKER_MAP[s]) return KR_TICKER_MAP[s];
+  const norm = s.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (KR_TICKER_REVERSE_EN[norm]) return KR_TICKER_REVERSE_EN[norm];
+  const stripped = norm.replace(/[,.]/g, '').replace(/\s(co\sltd|inc|corp(oration)?|corporation|ltd|company|group|holdings)$/i, '').trim();
+  if (KR_TICKER_REVERSE_EN[stripped]) return KR_TICKER_REVERSE_EN[stripped];
+  return null;
+}
+
+// Walk securities output and canonicalize symbol+tickerCode using the static map.
+// Returns { stats: { matched, missed } } so the caller can log / inspect.
+function applyTickerMap(out) {
+  const stats = { matched: 0, missed: 0, total: 0 };
+  const fix = (item) => {
+    if (!item || typeof item !== 'object') return;
+    if (!('symbol' in item)) return;
+    stats.total++;
+    const hit = lookupTicker(item.symbol);
+    if (hit) {
+      item.symbol = hit.en;
+      item.tickerCode = hit.ticker;
+      stats.matched++;
+    } else {
+      stats.missed++;
+    }
+  };
+  for (const k of ['trades', 'holdings', 'dividends']) {
+    if (Array.isArray(out?.[k])) out[k].forEach(fix);
+  }
+  return stats;
+}
+
+const VALID_SIDE = new Set(['Buy', 'Sell']);
+const VALID_CASH_TYPE = new Set(['Deposit', 'Withdrawal']);
+
+function digits(v) {
+  if (v === '' || v == null) return '';
+  return String(v).replace(/[^0-9.-]/g, '');
+}
+
 function normalizeSecurities(out) {
   const obj = (out && typeof out === 'object') ? out : {};
   const norm = {
@@ -436,6 +535,59 @@ function normalizeSecurities(out) {
   for (const k of SECURITIES_KEYS) {
     norm[k] = Array.isArray(obj[k]) ? obj[k] : [];
   }
+
+  // Trades: drop rows with invalid Side, strip non-digits from numeric fields.
+  norm.trades = norm.trades.filter(r => r && typeof r === 'object').map(r => ({
+    ...r,
+    side: VALID_SIDE.has(r.side) ? r.side : '',
+    qty: digits(r.qty),
+    unitPriceKRW: digits(r.unitPriceKRW),
+    amountKRW: digits(r.amountKRW),
+  }));
+
+  // Holdings: strip non-digits.
+  norm.holdings = norm.holdings.filter(r => r && typeof r === 'object').map(r => ({
+    ...r,
+    qty: digits(r.qty),
+    avgCostKRW: digits(r.avgCostKRW),
+    currentPriceKRW: digits(r.currentPriceKRW),
+    marketValueKRW: digits(r.marketValueKRW),
+    unrealizedPnLKRW: digits(r.unrealizedPnLKRW),
+  }));
+
+  // Dividends: if gross == net and gross is nonzero, the model likely missed the tax split.
+  // Don't fabricate values — just clear gross so the consumer can see it was indeterminate.
+  norm.dividends = norm.dividends.filter(r => r && typeof r === 'object').map(r => {
+    const grossKRW = digits(r.grossKRW);
+    const netKRW = digits(r.netKRW);
+    if (grossKRW && netKRW && grossKRW === netKRW) {
+      return { ...r, grossKRW: '', netKRW };
+    }
+    return { ...r, grossKRW, netKRW };
+  });
+
+  // Taxes: strip non-digits; flag anomalous magnitudes (tax > 10% of amount is suspicious but we keep it — model may be right).
+  norm.taxes = norm.taxes.filter(r => r && typeof r === 'object').map(r => ({
+    ...r,
+    transactionTaxKRW: digits(r.transactionTaxKRW),
+    capitalGainsTaxKRW: digits(r.capitalGainsTaxKRW),
+  }));
+
+  // Cash movements: enforce enum; strip non-digits.
+  norm.cashMovements = norm.cashMovements.filter(r => r && typeof r === 'object').map(r => ({
+    ...r,
+    type: VALID_CASH_TYPE.has(r.type) ? r.type : '',
+    amountKRW: digits(r.amountKRW),
+    balanceKRW: digits(r.balanceKRW),
+  }));
+
+  // Currency exchanges: strip non-digits.
+  norm.currencyExchanges = norm.currencyExchanges.filter(r => r && typeof r === 'object').map(r => ({
+    ...r,
+    fromAmount: digits(r.fromAmount),
+    toAmount: digits(r.toAmount),
+  }));
+
   return norm;
 }
 
@@ -447,6 +599,8 @@ async function extractSecuritiesFromRows(headers, rows) {
   const norm = normalizeSecurities(out);
   const total = SECURITIES_KEYS.reduce((sum, k) => sum + norm[k].length, 0);
   if (total === 0) throw new Error('증권 추출 결과가 비어 있습니다.');
+  const mapStats = applyTickerMap(norm);
+  console.log('[securities] rows extract — categories:', SECURITIES_KEYS.map(k => `${k}:${norm[k].length}`).join(' '), '| ticker map matched/total:', `${mapStats.matched}/${mapStats.total}`);
   return norm;
 }
 
@@ -468,6 +622,8 @@ async function extractSecuritiesFromImage(imageUrl) {
   const norm = normalizeSecurities(out);
   const total = SECURITIES_KEYS.reduce((sum, k) => sum + norm[k].length, 0);
   if (total === 0) throw new Error('이미지에서 증권 거래 항목을 추출하지 못했습니다.');
+  const mapStats = applyTickerMap(norm);
+  console.log('[securities] image extract — categories:', SECURITIES_KEYS.map(k => `${k}:${norm[k].length}`).join(' '), '| ticker map matched/total:', `${mapStats.matched}/${mapStats.total}`);
   return norm;
 }
 

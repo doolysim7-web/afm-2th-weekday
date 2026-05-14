@@ -17,7 +17,9 @@
   table.preview { border-collapse: collapse; width: 100%; font-size: 13px; }
   table.preview th, table.preview td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top; }
   table.preview thead th { background: #f3f4f6; font-weight: 600; }
+  table.preview tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #94a3b8; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .sec-card-pdf { page-break-inside: avoid; break-inside: avoid; }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -557,6 +559,10 @@ function fmtKRW(v) {
   if (!Number.isFinite(n)) return String(v);
   return n.toLocaleString('en-US');
 }
+function krw(v) {
+  const s = fmtKRW(v);
+  return s === '' ? '—' : '₩' + s;
+}
 function pnlClass(v) {
   const n = Number(String(v).replace(/[^0-9.-]/g, ''));
   if (!Number.isFinite(n) || n === 0) return 'text-slate-500';
@@ -570,7 +576,7 @@ function pnlPrefix(v) {
 
 function SecCard({ title, subtitle, count, children }) {
   return (
-    <div className="border border-slate-200 rounded-lg bg-white p-4 mb-4">
+    <div className="sec-card-pdf border border-slate-200 rounded-lg bg-white p-4 mb-4">
       <div className="flex items-baseline justify-between mb-3">
         <div>
           <h3 className="text-base font-semibold text-slate-900">{title}</h3>
@@ -578,9 +584,16 @@ function SecCard({ title, subtitle, count, children }) {
         </div>
         <span className="text-xs text-slate-500">{count}건</span>
       </div>
-      {count > 0 ? children : <p className="text-sm text-slate-400">데이터 없음</p>}
+      {count > 0 ? children : <p className="text-sm text-slate-400">No data</p>}
     </div>
   );
+}
+
+function sumNum(arr, key) {
+  return arr.reduce((s, r) => {
+    const n = Number(String(r?.[key] ?? '').replace(/[^0-9.-]/g, ''));
+    return s + (Number.isFinite(n) ? n : 0);
+  }, 0);
 }
 
 function SecuritiesResultView({ t }) {
@@ -605,10 +618,16 @@ function SecuritiesResultView({ t }) {
               <td className="font-mono text-xs">{r.tickerCode}</td>
               <td>{r.side === 'Buy' ? <span className="inline-block bg-emerald-100 text-emerald-800 text-xs px-1.5 py-0.5 rounded">Buy</span> : r.side === 'Sell' ? <span className="inline-block bg-rose-100 text-rose-800 text-xs px-1.5 py-0.5 rounded">Sell</span> : r.side}</td>
               <td className="num">{fmtKRW(r.qty)}</td>
-              <td className="num">₩{fmtKRW(r.unitPriceKRW)}</td>
-              <td className="num">₩{fmtKRW(r.amountKRW)}</td>
+              <td className="num">{krw(r.unitPriceKRW)}</td>
+              <td className="num">{krw(r.amountKRW)}</td>
             </tr>
           ))}</tbody>
+          <tfoot><tr>
+            <td colSpan={4}>Total ({trades.length} {trades.length === 1 ? 'trade' : 'trades'})</td>
+            <td className="num">{fmtKRW(sumNum(trades, 'qty'))}</td>
+            <td></td>
+            <td className="num">{krw(sumNum(trades, 'amountKRW'))}</td>
+          </tr></tfoot>
         </table>
       </SecCard>
 
@@ -624,10 +643,10 @@ function SecuritiesResultView({ t }) {
               <td>{r.symbol}</td>
               <td className="font-mono text-xs">{r.tickerCode}</td>
               <td className="num">{fmtKRW(r.qty)}</td>
-              <td className="num">₩{fmtKRW(r.avgCostKRW)}</td>
-              <td className="num">₩{fmtKRW(r.currentPriceKRW)}</td>
-              <td className="num">₩{fmtKRW(r.marketValueKRW)}</td>
-              <td className={`num font-medium ${pnlClass(r.unrealizedPnLKRW)}`}>{pnlPrefix(r.unrealizedPnLKRW)}₩{fmtKRW(r.unrealizedPnLKRW)}</td>
+              <td className="num">{krw(r.avgCostKRW)}</td>
+              <td className="num">{krw(r.currentPriceKRW)}</td>
+              <td className="num">{krw(r.marketValueKRW)}</td>
+              <td className={`num font-medium ${pnlClass(r.unrealizedPnLKRW)}`}>{pnlPrefix(r.unrealizedPnLKRW)}{krw(r.unrealizedPnLKRW)}</td>
             </tr>
           ))}</tbody>
         </table>
@@ -641,10 +660,15 @@ function SecuritiesResultView({ t }) {
               <td>{r.date}</td>
               <td>{r.symbol}</td>
               <td className="font-mono text-xs">{r.tickerCode}</td>
-              <td className="num">₩{fmtKRW(r.grossKRW)}</td>
-              <td className="num">₩{fmtKRW(r.netKRW)}</td>
+              <td className="num">{krw(r.grossKRW)}</td>
+              <td className="num">{krw(r.netKRW)}</td>
             </tr>
           ))}</tbody>
+          <tfoot><tr>
+            <td colSpan={3}>Total</td>
+            <td className="num">{krw(sumNum(dividends, 'grossKRW'))}</td>
+            <td className="num">{krw(sumNum(dividends, 'netKRW'))}</td>
+          </tr></tfoot>
         </table>
       </SecCard>
 
@@ -655,10 +679,15 @@ function SecuritiesResultView({ t }) {
             <tr key={i}>
               <td>{r.date}</td>
               <td>{r.description}</td>
-              <td className="num">₩{fmtKRW(r.transactionTaxKRW)}</td>
-              <td className="num">₩{fmtKRW(r.capitalGainsTaxKRW)}</td>
+              <td className="num">{krw(r.transactionTaxKRW)}</td>
+              <td className="num">{krw(r.capitalGainsTaxKRW)}</td>
             </tr>
           ))}</tbody>
+          <tfoot><tr>
+            <td colSpan={2}>Total</td>
+            <td className="num">{krw(sumNum(taxes, 'transactionTaxKRW'))}</td>
+            <td className="num">{krw(sumNum(taxes, 'capitalGainsTaxKRW'))}</td>
+          </tr></tfoot>
         </table>
       </SecCard>
 
@@ -669,10 +698,20 @@ function SecuritiesResultView({ t }) {
             <tr key={i}>
               <td>{r.date}</td>
               <td>{r.type === 'Deposit' ? <span className="inline-block bg-emerald-100 text-emerald-800 text-xs px-1.5 py-0.5 rounded">Deposit</span> : r.type === 'Withdrawal' ? <span className="inline-block bg-amber-100 text-amber-800 text-xs px-1.5 py-0.5 rounded">Withdrawal</span> : r.type}</td>
-              <td className={`num ${r.type === 'Withdrawal' ? 'text-rose-700' : 'text-emerald-700'}`}>{r.type === 'Withdrawal' ? '-' : '+'}₩{fmtKRW(r.amountKRW)}</td>
-              <td className="num">₩{fmtKRW(r.balanceKRW)}</td>
+              <td className={`num ${r.type === 'Withdrawal' ? 'text-rose-700' : 'text-emerald-700'}`}>{(r.amountKRW === '' || r.amountKRW == null) ? '—' : (r.type === 'Withdrawal' ? '-' : '+') + krw(r.amountKRW)}</td>
+              <td className="num">{krw(r.balanceKRW)}</td>
             </tr>
           ))}</tbody>
+          <tfoot><tr>
+            <td colSpan={2}>Net Cash Flow</td>
+            <td className="num">{(() => {
+              const dep = sumNum(cash.filter(r => r.type === 'Deposit'), 'amountKRW');
+              const wd = sumNum(cash.filter(r => r.type === 'Withdrawal'), 'amountKRW');
+              const net = dep - wd;
+              return (net >= 0 ? '+' : '-') + '₩' + fmtKRW(Math.abs(net));
+            })()}</td>
+            <td></td>
+          </tr></tfoot>
         </table>
       </SecCard>
 
