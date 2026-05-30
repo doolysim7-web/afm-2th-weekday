@@ -4,6 +4,8 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const XLSX = require('xlsx');
 const PDFDocument = require('pdfkit');
@@ -14,7 +16,9 @@ types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
 const app = express();
 const PORT = process.env.PORT || 3002;
 const PFX = 'trans_kr2eng_';
+const JWT_SECRET = (process.env.JWT_SECRET || 'dev-secret-change-me').trim();
 const T = {
+  users: `${PFX}users`,
   dictionary: `${PFX}dictionary`,
   jobs: `${PFX}jobs`,
   rows: `${PFX}rows`,
@@ -39,6 +43,18 @@ app.use(express.static(path.join(__dirname)));
 let dbReady = false;
 async function initDB() {
   if (dbReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${T.users} (
+      id BIGSERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_login_at TIMESTAMPTZ
+    );
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${T.dictionary} (
       id BIGSERIAL PRIMARY KEY,
@@ -85,7 +101,45 @@ async function initDB() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS ${T.rows}_job_idx ON ${T.rows}(job_id);`);
 
+  // jobs에 user_id 추가 (기존 DB 마이그레이션 안전)
+  await pool.query(`ALTER TABLE ${T.jobs} ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES ${T.users}(id) ON DELETE SET NULL;`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS ${T.jobs}_user_idx ON ${T.jobs}(user_id, id DESC);`);
+
   dbReady = true;
+}
+
+// ----------------------------------------------------------------------------
+// Auth middleware
+// ----------------------------------------------------------------------------
+function signToken(u) {
+  return jwt.sign({ sub: u.id, email: u.email, role: u.role }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+function authRequired(req, res, next) {
+  const h = req.headers.authorization || '';
+  const tok = h.startsWith('Bearer ') ? h.slice(7) : null;
+  if (!tok) return res.status(401).json({ success: false, message: '로그인이 필요해요' });
+  try {
+    const p = jwt.verify(tok, JWT_SECRET);
+    req.userId = p.sub;
+    req.userRole = p.role;
+    next();
+  } catch {
+    return res.status(401).json({ success: false, message: '세션이 만료됐어요. 다시 로그인해주세요' });
+  }
+}
+
+function authOptional(req, _res, next) {
+  const h = req.headers.authorization || '';
+  const tok = h.startsWith('Bearer ') ? h.slice(7) : null;
+  if (tok) {
+    try {
+      const p = jwt.verify(tok, JWT_SECRET);
+      req.userId = p.sub;
+      req.userRole = p.role;
+    } catch { /* ignore */ }
+  }
+  next();
 }
 
 app.use('/api', async (_req, res, next) => {
@@ -493,6 +547,79 @@ function buildPdfBuffer(rows, meta = {}) {
 }
 
 // ----------------------------------------------------------------------------
+// API — Auth (signup / login / me)
+// ----------------------------------------------------------------------------
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { email, password, display_name } = req.body || {};
+    const e = (email || '').toString().trim().toLowerCase();
+    const dn = (display_name || '').toString().trim();
+    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      return res.status(400).json({ success: false, message: '이메일 형식이 맞나요?' });
+    }
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, message: '비밀번호는 6자 이상' });
+    }
+    if (!dn || dn.length > 30) {
+      return res.status(400).json({ success: false, message: '이름은 1~30자' });
+    }
+    const hash = await bcrypt.hash(password, 10);
+    try {
+      const r = await pool.query(
+        `INSERT INTO ${T.users} (email, password_hash, display_name)
+         VALUES ($1, $2, $3)
+         RETURNING id, email, display_name, role, created_at`,
+        [e, hash, dn]
+      );
+      const u = r.rows[0];
+      res.status(201).json({ success: true, data: { token: signToken(u), user: u } });
+    } catch (err) {
+      if (err.code === '23505') return res.status(409).json({ success: false, message: '이미 가입된 이메일이에요' });
+      throw err;
+    }
+  } catch (err) {
+    console.error('signup failed:', err);
+    res.status(500).json({ success: false, message: '회원가입 실패' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    const e = (email || '').toString().trim().toLowerCase();
+    if (!e || !password) return res.status(400).json({ success: false, message: '이메일/비밀번호를 입력해주세요' });
+    const r = await pool.query(
+      `SELECT id, email, password_hash, display_name, role FROM ${T.users} WHERE email = $1`,
+      [e]
+    );
+    const u = r.rows[0];
+    if (!u) return res.status(401).json({ success: false, message: '이메일/비밀번호를 확인해주세요' });
+    const ok = await bcrypt.compare(password, u.password_hash);
+    if (!ok) return res.status(401).json({ success: false, message: '이메일/비밀번호를 확인해주세요' });
+    await pool.query(`UPDATE ${T.users} SET last_login_at = NOW() WHERE id = $1`, [u.id]);
+    const user = { id: u.id, email: u.email, display_name: u.display_name, role: u.role };
+    res.json({ success: true, data: { token: signToken(user), user } });
+  } catch (err) {
+    console.error('login failed:', err);
+    res.status(500).json({ success: false, message: '로그인 실패' });
+  }
+});
+
+app.get('/api/auth/me', authRequired, async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, email, display_name, role, created_at, last_login_at
+         FROM ${T.users} WHERE id = $1`,
+      [req.userId]
+    );
+    if (!r.rows[0]) return res.status(404).json({ success: false, message: '사용자 없음' });
+    res.json({ success: true, data: r.rows[0] });
+  } catch {
+    res.status(500).json({ success: false, message: '프로필 조회 실패' });
+  }
+});
+
+// ----------------------------------------------------------------------------
 // API — ImageKit signature
 // ----------------------------------------------------------------------------
 app.get('/api/upload/auth', (_req, res) => {
@@ -520,7 +647,7 @@ app.get('/api/upload/auth', (_req, res) => {
 // ----------------------------------------------------------------------------
 // API — parse uploaded file → Korean rows
 // ----------------------------------------------------------------------------
-app.post('/api/parse-file', upload.single('file'), (req, res) => {
+app.post('/api/parse-file', authRequired, upload.single('file'), (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: '파일이 없어요' });
     const ext = (req.file.originalname.match(/\.(\w+)$/) || ['', ''])[1].toLowerCase();
@@ -545,7 +672,7 @@ app.post('/api/parse-file', upload.single('file'), (req, res) => {
 // ----------------------------------------------------------------------------
 // API — extract rows from image (uploaded to ImageKit)
 // ----------------------------------------------------------------------------
-app.post('/api/parse-image', async (req, res) => {
+app.post('/api/parse-image', authRequired, async (req, res) => {
   try {
     const { url, source_name } = req.body || {};
     if (!url) return res.status(400).json({ success: false, message: '이미지 URL이 필요해요' });
@@ -568,7 +695,7 @@ app.post('/api/parse-image', async (req, res) => {
 // ----------------------------------------------------------------------------
 // API — convert + persist job
 // ----------------------------------------------------------------------------
-app.post('/api/convert', async (req, res) => {
+app.post('/api/convert', authRequired, async (req, res) => {
   try {
     const { rows, source_type, source_name, source_image_url } = req.body || {};
     if (!Array.isArray(rows) || rows.length === 0) {
@@ -577,9 +704,10 @@ app.post('/api/convert', async (req, res) => {
     const { rows: converted, aiNewTerms } = await convertRows(rows);
 
     const j = await pool.query(
-      `INSERT INTO ${T.jobs} (source_type, source_name, source_image_url, row_count, ai_new_terms)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+      `INSERT INTO ${T.jobs} (user_id, source_type, source_name, source_image_url, row_count, ai_new_terms)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [
+        req.userId,
         (source_type || 'excel').slice(0, 16),
         (source_name || '').slice(0, 200),
         (source_image_url || '').slice(0, 500),
@@ -614,7 +742,7 @@ app.post('/api/convert', async (req, res) => {
 // ----------------------------------------------------------------------------
 // API — download English Excel / PDF
 // ----------------------------------------------------------------------------
-app.post('/api/download/excel', (req, res) => {
+app.post('/api/download/excel', authRequired, (req, res) => {
   try {
     const { rows } = req.body || {};
     if (!Array.isArray(rows)) return res.status(400).json({ success: false, message: 'rows 필요' });
@@ -628,7 +756,7 @@ app.post('/api/download/excel', (req, res) => {
   }
 });
 
-app.post('/api/download/pdf', async (req, res) => {
+app.post('/api/download/pdf', authRequired, async (req, res) => {
   try {
     const { rows, source_name } = req.body || {};
     if (!Array.isArray(rows)) return res.status(400).json({ success: false, message: 'rows 필요' });
@@ -662,15 +790,64 @@ app.get('/api/dictionary', async (req, res) => {
   }
 });
 
-app.get('/api/jobs', async (_req, res) => {
+// 본인 변환 이력 (로그인 필요)
+app.get('/api/me/jobs', authRequired, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT id, source_type, source_name, row_count, ai_new_terms, created_at
-         FROM ${T.jobs} ORDER BY id DESC LIMIT 50`
+      `SELECT id, source_type, source_name, source_image_url, row_count, ai_new_terms, created_at
+         FROM ${T.jobs}
+        WHERE user_id = $1
+        ORDER BY id DESC LIMIT 200`,
+      [req.userId]
     );
     res.json({ success: true, data: r.rows });
   } catch (err) {
-    res.status(500).json({ success: false, message: '작업 이력 조회 실패' });
+    console.error('me/jobs failed:', err);
+    res.status(500).json({ success: false, message: '이력 조회 실패' });
+  }
+});
+
+// 단일 작업 상세 (본인 것만)
+app.get('/api/jobs/:id', authRequired, async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    const j = await pool.query(
+      `SELECT id, user_id, source_type, source_name, source_image_url, row_count, ai_new_terms, created_at
+         FROM ${T.jobs} WHERE id = $1`,
+      [id]
+    );
+    const job = j.rows[0];
+    if (!job) return res.status(404).json({ success: false, message: '작업 없음' });
+    if (job.user_id && job.user_id !== req.userId && req.userRole !== 'admin') {
+      return res.status(403).json({ success: false, message: '본인 작업만 볼 수 있어요' });
+    }
+    const rows = await pool.query(
+      `SELECT row_index, date, stock_ko, stock_en, memo_ko, memo_en, quantity, unit_price, amount, currency
+         FROM ${T.rows} WHERE job_id = $1 ORDER BY row_index ASC`,
+      [id]
+    );
+    res.json({ success: true, data: { ...job, rows: rows.rows } });
+  } catch (err) {
+    console.error('job detail failed:', err);
+    res.status(500).json({ success: false, message: '작업 상세 실패' });
+  }
+});
+
+// 관리자용 전체 이력 (옵션)
+app.get('/api/jobs', authRequired, async (req, res) => {
+  try {
+    if (req.userRole !== 'admin') {
+      return res.status(403).json({ success: false, message: '관리자 전용 — /api/me/jobs를 사용하세요' });
+    }
+    const r = await pool.query(
+      `SELECT j.id, j.source_type, j.source_name, j.row_count, j.ai_new_terms, j.created_at, u.display_name
+         FROM ${T.jobs} j LEFT JOIN ${T.users} u ON u.id = j.user_id
+        ORDER BY j.id DESC LIMIT 200`
+    );
+    res.json({ success: true, data: r.rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: '전체 이력 조회 실패' });
   }
 });
 

@@ -89,20 +89,76 @@ table.fancy td.num { text-align: right; font-variant-numeric: tabular-nums; }
 <body>
 <div id="root"></div>
 <script type="text/babel" data-presets="react">
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect, useCallback, createContext, useContext } = React;
 
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
+const TOKEN_KEY = 'trans_kr2eng_token';
+const getToken = () => localStorage.getItem(TOKEN_KEY);
+const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+
 async function api(path, opts = {}) {
-  const r = await fetch(path, opts);
+  const headers = { ...(opts.headers || {}) };
+  if (!(opts.body instanceof FormData) && !headers['Content-Type'] && opts.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const r = await fetch(path, { ...opts, headers });
   let j = null;
   try { j = await r.json(); } catch {}
   if (!r.ok || !j || j.success === false) {
-    throw new Error((j && j.message) || `HTTP ${r.status}`);
+    const err = new Error((j && j.message) || `HTTP ${r.status}`);
+    err.status = r.status;
+    throw err;
   }
   return j.data;
 }
+
+// ---------------------------------------------------------------------------
+// Hash router
+// ---------------------------------------------------------------------------
+function useHashRoute() {
+  const parse = () => (location.hash || '#/').replace(/^#/, '') || '/';
+  const [path, setPath] = useState(parse());
+  useEffect(() => {
+    const onChange = () => setPath(parse());
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
+  }, []);
+  return path;
+}
+const navigate = (p) => { location.hash = p.startsWith('/') ? `#${p}` : `#/${p}`; };
+
+// ---------------------------------------------------------------------------
+// Auth context
+// ---------------------------------------------------------------------------
+const AuthCtx = createContext(null);
+
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    (async () => {
+      if (!getToken()) { setLoading(false); return; }
+      try { setUser(await api('/api/auth/me')); }
+      catch { setToken(null); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+  const login = async (email, password) => {
+    const d = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    setToken(d.token); setUser(d.user); return d.user;
+  };
+  const signup = async (payload) => {
+    const d = await api('/api/auth/signup', { method: 'POST', body: JSON.stringify(payload) });
+    setToken(d.token); setUser(d.user); return d.user;
+  };
+  const logout = () => { setToken(null); setUser(null); navigate('/'); };
+  return <AuthCtx.Provider value={{ user, loading, login, signup, logout }}>{children}</AuthCtx.Provider>;
+}
+const useAuth = () => useContext(AuthCtx);
 
 async function uploadImage(file) {
   const auth = await api('/api/upload/auth');
@@ -142,22 +198,101 @@ function Card({ children, className = '' }) {
   );
 }
 
-function Header({ onOpenDoc }) {
+function Header({ onOpenDoc, onOpenAuth }) {
+  const { user, logout } = useAuth();
   return (
     <header className="border-b border-gold-100 bg-white/80 backdrop-blur sticky top-0 z-30">
       <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between gap-3">
-        <a href="#/" className="flex items-center gap-2" onClick={(e) => { e.preventDefault(); onOpenDoc(null); }}>
+        <a href="#/" className="flex items-center gap-2">
           <span className="text-xl">📄</span>
           <span className="font-bold text-ink-700 tracking-tight">TradeStatement EN</span>
           <span className="hidden sm:inline text-xs text-gold-700 ml-1">거래내역서 영문 변환기</span>
         </a>
         <nav className="flex items-center gap-1 text-sm">
+          <a className="nav-link" href="#/">🏠 홈</a>
+          {user && <a className="nav-link" href="#/history">📜 변환 이력</a>}
           <button className="nav-link" onClick={() => onOpenDoc('mission')}>📋 기획서</button>
           <button className="nav-link" onClick={() => onOpenDoc('dev')}>🛠️ 개발문서</button>
-          <span className="hidden md:inline text-xs text-gray-400 ml-2">Single-File · Gemini · ImageKit</span>
+          {user ? (
+            <div className="flex items-center gap-1 ml-2 pl-3 border-l border-gold-100">
+              <span className="text-xs text-gray-500 hidden sm:inline">{user.display_name}</span>
+              <button className="nav-link text-gray-400 hover:text-red-500" onClick={logout}>로그아웃</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 ml-2 pl-3 border-l border-gold-100">
+              <button className="nav-link" onClick={() => onOpenAuth('login')}>로그인</button>
+              <button className="btn-primary" style={{ height: 32, padding: '0 12px', fontSize: 13 }} onClick={() => onOpenAuth('signup')}>가입</button>
+            </div>
+          )}
         </nav>
       </div>
     </header>
+  );
+}
+
+function AuthModal({ mode, onClose, onSwitch }) {
+  const { login, signup } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    if (mode) window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, onClose]);
+  if (!mode) return null;
+  const submit = async (e) => {
+    e.preventDefault(); setErr(''); setBusy(true);
+    try {
+      if (mode === 'login') await login(email, password);
+      else await signup({ email, password, display_name: displayName });
+      onClose();
+    } catch (ex) { setErr(ex.message); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="modal-backdrop fade-in" onClick={onClose}>
+      <div className="modal-panel" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <div className="font-bold text-ink-700 text-lg">{mode === 'login' ? '🔐 로그인' : '✨ 회원가입'}</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {mode === 'login' ? '이메일과 비밀번호를 입력해주세요' : '지점/이름을 함께 적어주세요'}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+        </div>
+        <form className="modal-body space-y-3" onSubmit={submit}>
+          <label className="block">
+            <div className="text-xs font-semibold text-gray-600 mb-1">이메일</div>
+            <input className="input" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="branch@company.co.kr" />
+          </label>
+          <label className="block">
+            <div className="text-xs font-semibold text-gray-600 mb-1">비밀번호 {mode === 'signup' && <span className="text-gray-400">(6자 이상)</span>}</div>
+            <input className="input" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          {mode === 'signup' && (
+            <label className="block">
+              <div className="text-xs font-semibold text-gray-600 mb-1">이름</div>
+              <input className="input" required maxLength={30} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="예: 강남지점 김지점" />
+            </label>
+          )}
+          {err && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠️ {err}</div>}
+          <button className="btn-primary w-full" disabled={busy}>
+            {busy ? '...' : mode === 'login' ? '로그인' : '가입하고 시작'}
+          </button>
+          <div className="text-center text-xs text-gray-500 pt-1">
+            {mode === 'login' ? (
+              <>처음이세요? <button type="button" className="text-ink-700 font-semibold underline" onClick={() => onSwitch('signup')}>가입하기</button></>
+            ) : (
+              <>이미 계정이 있나요? <button type="button" className="text-ink-700 font-semibold underline" onClick={() => onSwitch('login')}>로그인</button></>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -214,11 +349,9 @@ function UploadStep({ onParsed, busy, setBusy, setErr }) {
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const r = await fetch('/api/parse-file', { method: 'POST', body: fd });
-      const j = await r.json();
-      if (!j.success) throw new Error(j.message || '파싱 실패');
-      if (!j.data.rows.length) throw new Error('인식된 거래 행이 없어요. 열 헤더(일자/종목명/적요/수량/단가/금액)를 확인해주세요.');
-      onParsed(j.data);
+      const data = await api('/api/parse-file', { method: 'POST', body: fd });
+      if (!data.rows.length) throw new Error('인식된 거래 행이 없어요. 열 헤더(일자/종목명/적요/수량/단가/금액)를 확인해주세요.');
+      onParsed(data);
     } catch (e) { setErr(e.message); }
     finally { setBusy(false); }
   }, [onParsed, setBusy, setErr]);
@@ -391,9 +524,13 @@ function ResultStep({ result, onReset, setErr }) {
   const download = async (kind) => {
     setErr(''); setDownloading(kind);
     try {
+      const tok = getToken();
       const r = await fetch(`/api/download/${kind}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+        },
         body: JSON.stringify({ rows: result.rows, source_name: result.source_name }),
       });
       if (!r.ok) {
@@ -518,71 +655,298 @@ function DictionaryPanel() {
 }
 
 // ---------------------------------------------------------------------------
+// History view
+// ---------------------------------------------------------------------------
+function fmtDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function HistoryView() {
+  const { user, loading } = useAuth();
+  const [jobs, setJobs] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (loading) return;
+    if (!user) return;
+    api('/api/me/jobs').then(setJobs).catch((e) => setErr(e.message));
+  }, [user, loading]);
+  if (loading) return <div className="text-center text-gray-400 py-12">불러오는 중...</div>;
+  if (!user) return (
+    <Card><div className="text-center py-8">
+      <div className="text-3xl mb-2">🔐</div>
+      <div className="font-semibold text-ink-700">로그인이 필요해요</div>
+      <div className="text-xs text-gray-500 mt-1">상단의 "로그인" 또는 "가입"으로 시작하세요.</div>
+    </div></Card>
+  );
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="font-bold text-ink-700 text-lg">📜 내 변환 이력</div>
+          <div className="text-xs text-gray-500 mt-0.5">최근 200건까지 표시 · 클릭하면 상세 결과로 이동</div>
+        </div>
+        <a href="#/" className="btn-ghost">+ 새 변환</a>
+      </div>
+      {err && <div className="text-sm text-red-600 mb-2">⚠️ {err}</div>}
+      {!jobs && !err && <div className="text-center text-gray-400 py-8">불러오는 중...</div>}
+      {jobs && jobs.length === 0 && (
+        <div className="text-center py-10">
+          <div className="text-3xl mb-2">📭</div>
+          <div className="font-semibold text-gray-600">아직 변환 이력이 없어요</div>
+          <div className="text-xs text-gray-500 mt-1">홈에서 거래내역을 업로드해보세요.</div>
+        </div>
+      )}
+      {jobs && jobs.length > 0 && (
+        <div className="overflow-auto rounded-lg border border-gold-100">
+          <table className="fancy">
+            <thead>
+              <tr>
+                <th>Job #</th><th>일시</th><th>유형</th><th>파일/원본</th>
+                <th className="num">행 수</th><th className="num">AI 신규</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {jobs.map((j) => (
+                <tr key={j.id} className="cursor-pointer" onClick={() => navigate(`/jobs/${j.id}`)}>
+                  <td className="font-semibold text-ink-700">#{j.id}</td>
+                  <td>{fmtDate(j.created_at)}</td>
+                  <td>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${j.source_type === 'image' ? 'bg-gold-100 text-gold-700' : 'bg-ink-50 text-ink-700'}`}>
+                      {j.source_type === 'image' ? '🖼️ 이미지' : j.source_type === 'csv' ? '📄 CSV' : '📊 엑셀'}
+                    </span>
+                  </td>
+                  <td className="truncate" style={{ maxWidth: 240 }}>{j.source_name || '—'}</td>
+                  <td className="num">{j.row_count}</td>
+                  <td className="num">{j.ai_new_terms}</td>
+                  <td><span className="text-ink-700 font-semibold text-sm">›</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function JobDetailView({ id }) {
+  const { user, loading } = useAuth();
+  const [job, setJob] = useState(null);
+  const [err, setErr] = useState('');
+  const [downloading, setDownloading] = useState('');
+  useEffect(() => {
+    if (loading) return;
+    if (!user) return;
+    api(`/api/jobs/${id}`).then(setJob).catch((e) => setErr(e.message));
+  }, [id, user, loading]);
+
+  const download = async (kind) => {
+    if (!job) return;
+    setDownloading(kind);
+    try {
+      const tok = getToken();
+      const r = await fetch(`/api/download/${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
+        body: JSON.stringify({ rows: job.rows, source_name: job.source_name }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.message || `HTTP ${r.status}`);
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `trade-statement-en-job${job.id}.${kind === 'pdf' ? 'pdf' : 'xlsx'}`;
+      document.body.appendChild(a); a.click();
+      a.remove(); URL.revokeObjectURL(url);
+    } catch (e) { setErr(e.message); }
+    finally { setDownloading(''); }
+  };
+
+  if (loading) return <div className="text-center text-gray-400 py-12">불러오는 중...</div>;
+  if (!user) return null;
+  if (err) return <div className="text-sm text-red-600">⚠️ {err}</div>;
+  if (!job) return <div className="text-center text-gray-400 py-12">불러오는 중...</div>;
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="font-bold text-ink-700 text-lg">📄 Job #{job.id}</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {fmtDate(job.created_at)} · {job.source_type === 'image' ? '🖼️ 이미지' : '📊 엑셀'} · {job.source_name || '—'} · {job.row_count} 행 · 신규 AI {job.ai_new_terms}건
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <a href="#/history" className="btn-ghost">← 이력</a>
+          <button className="btn-primary" disabled={!!downloading} onClick={() => download('excel')}>
+            {downloading === 'excel' ? '준비 중...' : '📥 Excel'}
+          </button>
+          <button className="btn-primary" disabled={!!downloading} onClick={() => download('pdf')}>
+            {downloading === 'pdf' ? '준비 중...' : '📄 PDF'}
+          </button>
+        </div>
+      </div>
+      {job.source_image_url && (
+        <img src={job.source_image_url} alt="원본 이미지" className="max-h-56 rounded-lg border border-gold-100 mb-3" />
+      )}
+      <div className="overflow-auto rounded-lg border border-gold-100">
+        <table className="fancy">
+          <thead>
+            <tr>
+              <th>No.</th><th>Date</th>
+              <th>Stock (KR → EN)</th><th>Memo (KR → EN)</th>
+              <th>Quantity</th><th>Unit Price</th><th>Amount</th><th>CCY</th>
+            </tr>
+          </thead>
+          <tbody>
+            {job.rows.map((r, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{r.date}</td>
+                <td>
+                  <div className="text-gray-400 text-xs">{r.stock_ko}</div>
+                  <div className="font-semibold text-ink-700">{r.stock_en || <span className="text-red-500 text-xs">— 미번역 —</span>}</div>
+                </td>
+                <td>
+                  <div className="text-gray-400 text-xs">{r.memo_ko}</div>
+                  <div className="font-semibold text-ink-700">{r.memo_en || <span className="text-red-500 text-xs">— 미번역 —</span>}</div>
+                </td>
+                <td className="num">{r.quantity}</td>
+                <td className="num">{r.unit_price}</td>
+                <td className="num">{r.amount}</td>
+                <td>{r.currency}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Home view
+// ---------------------------------------------------------------------------
+function HomeView({ parsed, setParsed, result, setResult, busy, setBusy, err, setErr, onOpenAuth }) {
+  const { user } = useAuth();
+  const reset = () => { setParsed(null); setResult(null); setErr(''); };
+  return (
+    <>
+      <section className="bg-gradient-to-br from-ink-700 to-ink-800 text-white rounded-3xl p-6 mb-2">
+        <div className="text-xs text-gold-300 font-semibold tracking-wide">증권 거래내역서 · KR → EN</div>
+        <h1 className="text-2xl sm:text-3xl font-bold mt-1">반나절이 걸리던 영문 변환을 30초 안에.</h1>
+        <p className="text-sm text-ink-100 mt-2 max-w-2xl">
+          지점 직원이 한글 거래내역서를 그대로 올리면, 사전 매칭 + Gemini가 종목명·적요를 영문으로 바꾸고 공식 PDF·엑셀로 내려줍니다.
+          한 번 번역된 표현은 사전에 누적되어, 다음부터는 회사 전체가 같은 영문을 씁니다.
+        </p>
+      </section>
+
+      <Divider label="Workflow" />
+
+      {!user && (
+        <Card>
+          <div className="text-center py-6">
+            <div className="text-3xl mb-2">🔐</div>
+            <div className="font-semibold text-ink-700">먼저 로그인이 필요해요</div>
+            <div className="text-xs text-gray-500 mt-1 mb-3">변환 이력은 직원별로 안전하게 관리됩니다.</div>
+            <div className="flex justify-center gap-2">
+              <button className="btn-ghost" onClick={() => onOpenAuth('login')}>로그인</button>
+              <button className="btn-primary" onClick={() => onOpenAuth('signup')}>가입하기</button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {user && !parsed && (
+        <UploadStep onParsed={setParsed} busy={busy} setBusy={setBusy} setErr={setErr} />
+      )}
+
+      {user && parsed && !result && (
+        <PreviewStep parsed={parsed} onConverted={setResult} busy={busy} setBusy={setBusy} setErr={setErr} onReset={reset} />
+      )}
+
+      {user && result && (
+        <ResultStep result={result} onReset={reset} setErr={setErr} />
+      )}
+
+      {err && (
+        <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2 fade-in">
+          ⚠️ {err}
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
 function App() {
-  const [parsed, setParsed]   = useState(null);  // { rows, source_type, source_name, source_image_url? }
-  const [result, setResult]   = useState(null);  // { rows: english, job_id, ai_new_terms, ... }
+  const path = useHashRoute();
+  const { loading } = useAuth();
+  const [parsed, setParsed]   = useState(null);
+  const [result, setResult]   = useState(null);
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
-  const [docName, setDocName] = useState(null);  // 'mission' | 'dev' | null
+  const [docName, setDocName] = useState(null);
+  const [authMode, setAuthMode] = useState(null);   // 'login' | 'signup' | null
 
-  const reset = () => { setParsed(null); setResult(null); setErr(''); };
+  // Clear in-flight state when navigating away from home
+  useEffect(() => {
+    if (path !== '/') { setErr(''); }
+  }, [path]);
+
+  let body;
+  if (loading) {
+    body = <div className="text-center text-gray-400 py-12">불러오는 중...</div>;
+  } else if (path === '/' || path === '') {
+    body = (
+      <HomeView
+        parsed={parsed} setParsed={setParsed}
+        result={result} setResult={setResult}
+        busy={busy} setBusy={setBusy}
+        err={err} setErr={setErr}
+        onOpenAuth={setAuthMode}
+      />
+    );
+  } else if (path === '/history') {
+    body = <HistoryView />;
+  } else if (path.match(/^\/jobs\/(\d+)$/)) {
+    body = <JobDetailView id={path.match(/^\/jobs\/(\d+)$/)[1]} />;
+  } else {
+    body = (
+      <Card>
+        <div className="text-center py-8">
+          <div className="text-3xl mb-2">🌿</div>
+          <div className="font-semibold text-ink-700">페이지를 찾지 못했어요</div>
+          <a href="#/" className="text-ink-700 font-semibold underline text-sm mt-2 inline-block">홈으로</a>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="min-h-full pb-16">
-      <Header onOpenDoc={setDocName} />
+      <Header onOpenDoc={setDocName} onOpenAuth={setAuthMode} />
       <main className="max-w-6xl mx-auto px-5 py-6">
-        {/* Hero */}
-        <section className="bg-gradient-to-br from-ink-700 to-ink-800 text-white rounded-3xl p-6 mb-2">
-          <div className="text-xs text-gold-300 font-semibold tracking-wide">증권 거래내역서 · KR → EN</div>
-          <h1 className="text-2xl sm:text-3xl font-bold mt-1">반나절이 걸리던 영문 변환을 30초 안에.</h1>
-          <p className="text-sm text-ink-100 mt-2 max-w-2xl">
-            지점 직원이 한글 거래내역서를 그대로 올리면, 사전 매칭 + Gemini가 종목명·적요를 영문으로 바꾸고 공식 PDF·엑셀로 내려줍니다.
-            한 번 번역된 표현은 사전에 누적되어, 다음부터는 회사 전체가 같은 영문을 씁니다.
-          </p>
-        </section>
+        {body}
 
-        <Divider label="Workflow" />
-
-        {!parsed && (
-          <UploadStep
-            onParsed={setParsed}
-            busy={busy} setBusy={setBusy} setErr={setErr}
-          />
+        {path === '/' && (
+          <>
+            <Divider label="Library" />
+            <DictionaryPanel />
+          </>
         )}
-
-        {parsed && !result && (
-          <PreviewStep
-            parsed={parsed}
-            onConverted={setResult}
-            busy={busy} setBusy={setBusy} setErr={setErr}
-            onReset={reset}
-          />
-        )}
-
-        {result && (
-          <ResultStep
-            result={result}
-            onReset={reset}
-            setErr={setErr}
-          />
-        )}
-
-        {err && (
-          <div className="mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-2 fade-in">
-            ⚠️ {err}
-          </div>
-        )}
-
-        <Divider label="Library" />
-
-        <DictionaryPanel />
 
         <Divider label="About" />
 
         <div className="text-xs text-gray-500 text-center">
-          <p>Single-file React + Express · Gemini 2.5 Flash · ImageKit · Supabase Postgres</p>
+          <p>Single-file React + Express · Gemini 2.5 Flash · ImageKit · Supabase Postgres · JWT auth</p>
           <p className="mt-1">
             © Trade Statement EN — for internal use only ·{' '}
             <button className="underline hover:text-ink-700" onClick={() => setDocName('mission')}>기획서</button>{' '}·{' '}
@@ -592,11 +956,12 @@ function App() {
       </main>
 
       <DocsModal name={docName} onClose={() => setDocName(null)} />
+      <AuthModal mode={authMode} onClose={() => setAuthMode(null)} onSwitch={setAuthMode} />
     </div>
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+ReactDOM.createRoot(document.getElementById('root')).render(<AuthProvider><App /></AuthProvider>);
 </script>
 </body>
 </html>
