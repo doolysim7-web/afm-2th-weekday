@@ -198,7 +198,7 @@ function Card({ children, className = '' }) {
   );
 }
 
-function Header({ onOpenDoc, onOpenAuth, onOpenGallery }) {
+function Header({ onOpenDoc, onOpenAuth, onPickFile }) {
   const { user, logout } = useAuth();
   return (
     <header className="border-b border-gold-100 bg-white/80 backdrop-blur sticky top-0 z-30">
@@ -213,8 +213,8 @@ function Header({ onOpenDoc, onOpenAuth, onOpenGallery }) {
           {user && <a className="nav-link" href="#/history">📜 변환 이력</a>}
           <button className="nav-link" onClick={() => onOpenDoc('mission')}>📋 기획서</button>
           <button className="nav-link" onClick={() => onOpenDoc('dev')}>🛠️ 개발문서</button>
-          <button className="nav-link" onClick={() => onOpenGallery('documents')}>📂 데모 자료</button>
-          <button className="nav-link" onClick={() => onOpenGallery('screenshot')}>🖼️ 작업 캡처</button>
+          <ScreenshotDropdown folder="documents" label="📂 데모 자료" onPick={onPickFile} />
+          <ScreenshotDropdown folder="screenshot" label="🖼️ 작업 캡처" onPick={onPickFile} />
           {user ? (
             <div className="flex items-center gap-1 ml-2 pl-3 border-l border-gold-100">
               <span className="text-xs text-gray-500 hidden sm:inline">{user.display_name}</span>
@@ -298,130 +298,112 @@ function AuthModal({ mode, onClose, onSwitch }) {
   );
 }
 
-function GalleryModal({ folder, onClose }) {
+// 메뉴에서 폴더의 파일 목록을 드롭다운으로 보여주는 컴포넌트
+function ScreenshotDropdown({ folder, label, onPick }) {
+  const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
-  const [idx, setIdx] = useState(0);
+  const ref = useRef();
   useEffect(() => {
-    if (!folder) return;
-    setData(null); setErr(''); setIdx(0);
+    if (!open || data) return;
     api(`/api/screenshots/${folder}`).then(setData).catch((e) => setErr(e.message));
-  }, [folder]);
-  const files = data?.files || [];
+  }, [open, data, folder]);
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
-      else if (e.key === 'ArrowLeft' && files.length > 1) setIdx((i) => (i - 1 + files.length) % files.length);
-      else if (e.key === 'ArrowRight' && files.length > 1) setIdx((i) => (i + 1) % files.length);
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('mousedown', onDoc);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('keydown', onKey);
     };
-    if (folder) window.addEventListener('keydown', onKey);
+  }, [open]);
+  const files = data?.files || [];
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button className="nav-link" onClick={() => setOpen((o) => !o)}>
+        {label} {open ? '▴' : '▾'}
+      </button>
+      {open && (
+        <div
+          className="fade-in"
+          style={{
+            position: 'absolute', top: '100%', right: 0, marginTop: 6,
+            background: 'white', borderRadius: 12, border: '1px solid #f5ecd5',
+            boxShadow: '0 12px 32px rgba(19,36,61,.18)', width: 360, maxHeight: 420,
+            overflowY: 'auto', zIndex: 60, padding: 6,
+          }}
+        >
+          <div className="px-2 py-1.5 text-[11px] uppercase tracking-wider text-gold-700 font-semibold border-b border-gold-100">
+            {folder}/ — {files.length}개
+          </div>
+          {err && <div className="text-sm text-red-600 p-3">⚠️ {err}</div>}
+          {!data && !err && <div className="text-center text-gray-400 py-6 text-sm">불러오는 중...</div>}
+          {data && files.length === 0 && <div className="text-center text-gray-400 py-6 text-sm">파일이 없어요</div>}
+          <ul>
+            {files.map((f, i) => (
+              <li key={f.name}>
+                <button
+                  className="w-full text-left flex items-center gap-2 px-2 py-2 rounded-md transition"
+                  style={{ color: '#13243d' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#fbf8f1'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                  onClick={() => { setOpen(false); onPick({ folder, name: f.name, size: f.size, mtime: f.mtime }); }}
+                  title={f.name}
+                >
+                  <span style={{ fontSize: 11, color: '#9a8045', minWidth: 22, fontVariantNumeric: 'tabular-nums' }}>
+                    {String(i + 1).padStart(2, '0')}.
+                  </span>
+                  <span style={{ fontSize: 13, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {f.name}
+                  </span>
+                  <span style={{ fontSize: 10, color: '#888', flexShrink: 0 }}>
+                    {(f.size / 1024).toFixed(0)} KB
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 단일 이미지만 보여주는 모달 (파일 리스트 없음)
+function SingleImageModal({ pick, onClose }) {
+  useEffect(() => {
+    if (!pick) return;
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [folder, files.length, onClose]);
-  if (!folder) return null;
-  const cur = files[idx];
+  }, [pick, onClose]);
+  if (!pick) return null;
   return (
     <div className="modal-backdrop fade-in" onClick={onClose}>
       <div
         className="modal-panel"
-        style={{ maxWidth: 1280, width: '100%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+        style={{ maxWidth: 1200, width: '100%', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-head">
-          <div>
-            <div className="font-bold text-ink-700 text-lg">{data?.label || '🖼️ 갤러리'}</div>
+          <div style={{ minWidth: 0 }}>
+            <div className="font-bold text-ink-700 text-lg truncate" title={pick.name}>📄 {pick.name}</div>
             <div className="text-xs text-gray-500 mt-0.5">
-              {folder}/ 폴더 · {files.length > 0 ? `${idx + 1} / ${files.length}` : '...'} · 좌측 목록에서 파일 선택 · ← → 키로 이동
+              {pick.folder}/ · {(pick.size / 1024).toFixed(0)} KB
+              {pick.mtime && ` · ${new Date(pick.mtime).toLocaleString('ko-KR')}`}
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
         </div>
-
-        {err && <div className="text-sm text-red-600 p-4">⚠️ {err}</div>}
-        {!data && !err && <div className="text-center text-gray-400 py-16">불러오는 중...</div>}
-        {data && files.length === 0 && <div className="text-center text-gray-400 py-16">아직 이미지가 없어요</div>}
-
-        {cur && (
-          <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-            {/* ── 좌측: 파일 리스트 ── */}
-            <aside
-              style={{ width: 300, flexShrink: 0, borderRight: '1px solid #f5ecd5', background: '#fbf8f1', overflowY: 'auto' }}
-            >
-              <div className="px-3 py-2 text-[11px] uppercase tracking-wider text-gold-700 font-semibold border-b border-gold-100 sticky top-0 bg-cream-50">
-                파일 ({files.length})
-              </div>
-              <ul>
-                {files.map((f, i) => {
-                  const sel = i === idx;
-                  return (
-                    <li key={f.name}>
-                      <button
-                        onClick={() => setIdx(i)}
-                        className="w-full text-left flex items-center gap-2.5 px-3 py-2 transition"
-                        style={{
-                          background: sel ? '#1f3a5f' : 'transparent',
-                          color: sel ? 'white' : '#13243d',
-                          borderLeft: sel ? '3px solid #c9b88c' : '3px solid transparent',
-                        }}
-                        onMouseEnter={(e) => { if (!sel) e.currentTarget.style.background = '#f5ecd5'; }}
-                        onMouseLeave={(e) => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
-                        title={f.name}
-                      >
-                        <img
-                          src={`/api/screenshots/${folder}/file?name=${encodeURIComponent(f.name)}`}
-                          alt={f.name}
-                          loading="lazy"
-                          style={{ width: 44, height: 30, objectFit: 'cover', borderRadius: 4, background: 'white', flexShrink: 0 }}
-                        />
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {i + 1}. {f.name}
-                          </div>
-                          <div style={{ fontSize: 10, opacity: 0.7, marginTop: 1 }}>
-                            {(f.size / 1024).toFixed(0)} KB
-                          </div>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </aside>
-
-            {/* ── 우측: 큰 미리보기 ── */}
-            <section style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              <div className="px-5 py-3 border-b border-gold-100 bg-cream-50">
-                <div className="font-semibold text-ink-700 text-sm truncate" title={cur.name}>📄 {cur.name}</div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {(cur.size / 1024).toFixed(0)} KB · {new Date(cur.mtime).toLocaleString('ko-KR')}
-                </div>
-              </div>
-              <div className="relative" style={{ flex: 1, minHeight: 380, background: '#13243d' }}>
-                <img
-                  src={`/api/screenshots/${folder}/file?name=${encodeURIComponent(cur.name)}`}
-                  alt={cur.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', position: 'absolute', inset: 0 }}
-                />
-                {files.length > 1 && (
-                  <>
-                    <button
-                      onClick={() => setIdx((i) => (i - 1 + files.length) % files.length)}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/15 hover:bg-white/30 text-white text-2xl"
-                      title="이전 (←)"
-                    >‹</button>
-                    <button
-                      onClick={() => setIdx((i) => (i + 1) % files.length)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/15 hover:bg-white/30 text-white text-2xl"
-                      title="다음 (→)"
-                    >›</button>
-                    <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-black/50 text-white text-xs">
-                      {idx + 1} / {files.length}
-                    </div>
-                  </>
-                )}
-              </div>
-            </section>
-          </div>
-        )}
+        <div style={{ flex: 1, minHeight: 0, background: '#13243d', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
+          <img
+            src={`/api/screenshots/${pick.folder}/file?name=${encodeURIComponent(pick.name)}`}
+            alt={pick.name}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -1047,7 +1029,7 @@ function App() {
   const [err, setErr]         = useState('');
   const [docName, setDocName] = useState(null);
   const [authMode, setAuthMode] = useState(null);   // 'login' | 'signup' | null
-  const [gallery, setGallery] = useState(null);     // 'documents' | 'screenshot' | null
+  const [picked, setPicked] = useState(null);       // { folder, name, size, mtime } | null
 
   // Clear in-flight state when navigating away from home
   useEffect(() => {
@@ -1085,7 +1067,7 @@ function App() {
 
   return (
     <div className="min-h-full pb-16">
-      <Header onOpenDoc={setDocName} onOpenAuth={setAuthMode} onOpenGallery={setGallery} />
+      <Header onOpenDoc={setDocName} onOpenAuth={setAuthMode} onPickFile={setPicked} />
       <main className="max-w-6xl mx-auto px-5 py-6">
         {body}
 
@@ -1110,7 +1092,7 @@ function App() {
 
       <DocsModal name={docName} onClose={() => setDocName(null)} />
       <AuthModal mode={authMode} onClose={() => setAuthMode(null)} onSwitch={setAuthMode} />
-      <GalleryModal folder={gallery} onClose={() => setGallery(null)} />
+      <SingleImageModal pick={picked} onClose={() => setPicked(null)} />
     </div>
   );
 }
