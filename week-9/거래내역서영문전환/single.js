@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
 const XLSX = require('xlsx');
@@ -670,6 +671,25 @@ app.get('/api/jobs', async (_req, res) => {
     res.json({ success: true, data: r.rows });
   } catch (err) {
     res.status(500).json({ success: false, message: '작업 이력 조회 실패' });
+  }
+});
+
+// ----------------------------------------------------------------------------
+// Docs (MISSION.md / DEV.md) — markdown 그대로 반환
+// ----------------------------------------------------------------------------
+const DOCS = {
+  mission: { file: 'documents/MISSION.md', title: '🎯 기획서 (MISSION)' },
+  dev:     { file: 'documents/DEV.md',     title: '🛠️ 개발문서 (DEV)' },
+};
+app.get('/api/docs/:name', (req, res) => {
+  const meta = DOCS[req.params.name];
+  if (!meta) return res.status(404).json({ success: false, message: '문서 없음' });
+  try {
+    const content = fs.readFileSync(path.join(__dirname, meta.file), 'utf8');
+    res.json({ success: true, data: { name: req.params.name, title: meta.title, content } });
+  } catch (err) {
+    console.error('docs read failed:', err);
+    res.status(500).json({ success: false, message: '문서 읽기 실패' });
   }
 });
 

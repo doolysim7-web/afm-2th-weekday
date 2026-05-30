@@ -55,10 +55,36 @@ table.fancy td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .tab.active { color: #1f3a5f; border-color: #c9b88c; }
 .dropzone { border: 2px dashed #c9b88c; border-radius: 14px; background: #fbf8f1; padding: 28px; text-align: center; transition: all .15s; }
 .dropzone.drag { border-color: #1f3a5f; background: #f5ecd5; }
+.nav-link { padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #475569; cursor: pointer; }
+.nav-link:hover { background: #f5ecd5; color: #1f3a5f; }
+/* markdown prose */
+.prose { color: #1f2937; line-height: 1.7; font-size: 14px; }
+.prose h1 { font-size: 24px; font-weight: 700; color: #13243d; margin: 22px 0 12px; border-bottom: 1px solid #f5ecd5; padding-bottom: 8px; }
+.prose h2 { font-size: 19px; font-weight: 700; color: #1f3a5f; margin: 22px 0 8px; }
+.prose h3 { font-size: 16px; font-weight: 700; color: #1f3a5f; margin: 18px 0 6px; }
+.prose h4 { font-size: 14px; font-weight: 700; color: #475569; margin: 14px 0 4px; }
+.prose p { margin: 8px 0; }
+.prose strong { color: #13243d; font-weight: 700; }
+.prose ul, .prose ol { padding-left: 22px; margin: 6px 0 10px; }
+.prose li { margin: 2px 0; }
+.prose code { background: #f6f1e6; color: #9a8045; padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.prose pre { background: #fbf8f1; border: 1px solid #f5ecd5; border-radius: 8px; padding: 12px 14px; overflow-x: auto; }
+.prose pre code { background: transparent; padding: 0; color: #13243d; }
+.prose table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+.prose th, .prose td { border: 1px solid #f5ecd5; padding: 6px 10px; text-align: left; }
+.prose th { background: #fbf8f1; color: #1f3a5f; }
+.prose blockquote { border-left: 3px solid #c9b88c; padding: 4px 12px; color: #475569; margin: 8px 0; background: #fbf8f1; border-radius: 0 6px 6px 0; }
+.prose hr { border: none; border-top: 1px solid #f5ecd5; margin: 18px 0; }
+/* modal */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(19, 36, 61, .55); backdrop-filter: blur(4px); z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.modal-panel { background: white; border-radius: 18px; max-width: 880px; width: 100%; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.25); overflow: hidden; }
+.modal-head { padding: 18px 24px; border-bottom: 1px solid #f5ecd5; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(180deg, #fbf8f1, #fff); }
+.modal-body { padding: 18px 28px; overflow-y: auto; }
 </style>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 <div id="root"></div>
@@ -116,18 +142,61 @@ function Card({ children, className = '' }) {
   );
 }
 
-function Header() {
+function Header({ onOpenDoc }) {
   return (
     <header className="border-b border-gold-100 bg-white/80 backdrop-blur sticky top-0 z-30">
-      <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between gap-3">
+        <a href="#/" className="flex items-center gap-2" onClick={(e) => { e.preventDefault(); onOpenDoc(null); }}>
           <span className="text-xl">📄</span>
           <span className="font-bold text-ink-700 tracking-tight">TradeStatement EN</span>
           <span className="hidden sm:inline text-xs text-gold-700 ml-1">거래내역서 영문 변환기</span>
-        </div>
-        <div className="text-xs text-gray-500">Single-File · Gemini · ImageKit</div>
+        </a>
+        <nav className="flex items-center gap-1 text-sm">
+          <button className="nav-link" onClick={() => onOpenDoc('mission')}>📋 기획서</button>
+          <button className="nav-link" onClick={() => onOpenDoc('dev')}>🛠️ 개발문서</button>
+          <span className="hidden md:inline text-xs text-gray-400 ml-2">Single-File · Gemini · ImageKit</span>
+        </nav>
       </div>
     </header>
+  );
+}
+
+function DocsModal({ name, onClose }) {
+  const [doc, setDoc] = useState(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    if (!name) return;
+    setDoc(null); setErr('');
+    api(`/api/docs/${name}`).then(setDoc).catch((e) => setErr(e.message));
+  }, [name]);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    if (name) window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [name, onClose]);
+  if (!name) return null;
+  const html = doc && window.marked ? window.marked.parse(doc.content) : '';
+  return (
+    <div className="modal-backdrop fade-in" onClick={onClose}>
+      <div className="modal-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <div className="font-bold text-ink-700 text-lg">{doc?.title || (name === 'mission' ? '기획서' : '개발문서')}</div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {name === 'mission'
+                ? 'documents/MISSION.md · 제품 비전 · 사용자 · v1 범위 · 성공지표'
+                : 'documents/DEV.md · 선택된 구조 · TODO 로드맵 · 외부 설정'}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl" title="닫기 (Esc)">✕</button>
+        </div>
+        <div className="modal-body">
+          {err && <div className="text-sm text-red-600">⚠️ {err}</div>}
+          {!doc && !err && <div className="text-center text-gray-400 py-12">불러오는 중...</div>}
+          {doc && <article className="prose" dangerouslySetInnerHTML={{ __html: html }} />}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -456,12 +525,13 @@ function App() {
   const [result, setResult]   = useState(null);  // { rows: english, job_id, ai_new_terms, ... }
   const [busy, setBusy]       = useState(false);
   const [err, setErr]         = useState('');
+  const [docName, setDocName] = useState(null);  // 'mission' | 'dev' | null
 
   const reset = () => { setParsed(null); setResult(null); setErr(''); };
 
   return (
     <div className="min-h-full pb-16">
-      <Header />
+      <Header onOpenDoc={setDocName} />
       <main className="max-w-6xl mx-auto px-5 py-6">
         {/* Hero */}
         <section className="bg-gradient-to-br from-ink-700 to-ink-800 text-white rounded-3xl p-6 mb-2">
@@ -513,9 +583,15 @@ function App() {
 
         <div className="text-xs text-gray-500 text-center">
           <p>Single-file React + Express · Gemini 2.5 Flash · ImageKit · Supabase Postgres</p>
-          <p className="mt-1">© Trade Statement EN — for internal use only.</p>
+          <p className="mt-1">
+            © Trade Statement EN — for internal use only ·{' '}
+            <button className="underline hover:text-ink-700" onClick={() => setDocName('mission')}>기획서</button>{' '}·{' '}
+            <button className="underline hover:text-ink-700" onClick={() => setDocName('dev')}>개발문서</button>
+          </p>
         </div>
       </main>
+
+      <DocsModal name={docName} onClose={() => setDocName(null)} />
     </div>
   );
 }
