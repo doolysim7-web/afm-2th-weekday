@@ -1,0 +1,22 @@
+{
+  "name": "trans-kr2eng",
+  "version": "1.0.0",
+  "private": true,
+  "description": "증권 거래내역서 한글 → 영문 변환기 (사전 + Gemini)",
+  "type": "commonjs",
+  "main": "single.js",
+  "scripts": {
+    "start": "node single.js",
+    "dev": "node --watch single.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "imagekit": "^5.2.0",
+    "multer": "^1.4.5-lts.1",
+    "pdfkit": "^0.15.0",
+    "pg": "^8.13.1",
+    "xlsx": "^0.18.5"
+  }
+}

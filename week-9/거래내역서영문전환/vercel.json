@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "single.js", "use": "@vercel/node" },
+    { "src": "index.html", "use": "@vercel/static" }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/single.js" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
