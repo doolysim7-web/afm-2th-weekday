@@ -24,6 +24,7 @@ const T = {
   posts: `${PFX}posts`,
   comments: `${PFX}comments`,
   postLikes: `${PFX}post_likes`,
+  chatMessages: `${PFX}chat_messages`,
 };
 
 const pool = new Pool({
@@ -39,6 +40,26 @@ const TASK_TYPES = ['모종', '시비', '관수', '수확', '풀뽑기', '병해
 const BOARD_LIST = ['질문', '자랑', '정보', '자유'];
 const BUDGET_CATEGORIES = ['모종/씨앗', '비료/퇴비', '농약', '도구', '임차료', '운반비', '기타'];
 const VISIBILITY = ['private', 'friends', 'public'];
+
+// 작물명 → 귀여운 이모지 (이미지 없을 때의 fallback + 기존 작물 백필용)
+const CROP_EMOJI_MAP = {
+  '상추': '🥬', '깻잎': '🌿', '부추': '🌿', '쪽파': '🧅', '대파': '🧅', '실파': '🧅',
+  '시금치': '🥬', '쑥갓': '🌿', '케일': '🥬', '청경채': '🥬', '겨자채': '🥬',
+  '배추': '🥬', '양배추': '🥬', '브로콜리': '🥦', '미나리': '🌿', '근대': '🌱',
+  '고추': '🌶️', '토마토': '🍅', '방울토마토': '🍅', '가지': '🍆', '오이': '🥒',
+  '호박': '🎃', '애호박': '🎃', '단호박': '🎃', '여주': '🌱', '참외': '🍈', '수박': '🍉',
+  '감자': '🥔', '고구마': '🍠', '당근': '🥕', '무': '🌱', '비트': '🌱', '토란': '🌱',
+  '옥수수': '🌽', '들깨': '🌿', '깨': '🌿',
+  '바질': '🌿', '루꼴라': '🌿', '로즈마리': '🌿', '페퍼민트': '🌿', '민트': '🌿',
+  '치커리': '🌿', '딜': '🌿', '파슬리': '🌿', '셀러리': '🥬',
+  '레몬밤': '🌿', '오레가노': '🌿', '타임': '🌿', '라벤더': '💜',
+  '완두콩': '🫛', '강낭콩': '🫘', '땅콩': '🥜', '딸기': '🍓',
+  '마늘': '🧄', '양파': '🧅', '생강': '🌱',
+};
+function emojiForCrop(name) {
+  if (!name) return '🌱';
+  return CROP_EMOJI_MAP[name] || '🌱';
+}
 
 // 입력에서 crop_ids 배열 정규화 (구버전 crop_id 단일 필드도 호환)
 function normalizeCropIds(body) {
@@ -99,6 +120,10 @@ function sanitizeAICrop(name, raw) {
     })
     .filter(Boolean)
     .slice(0, 24);
+  // 이모지: AI가 준 게 있으면 첫 grapheme 하나만 사용, 없으면 사전 fallback
+  const aiEmoji = (safe.emoji || '').toString().trim();
+  const emojiChar = aiEmoji ? Array.from(aiEmoji)[0] : '';
+  const emoji = emojiChar || emojiForCrop(name);
   return {
     category,
     season_start_month: ss,
@@ -107,6 +132,7 @@ function sanitizeAICrop(name, raw) {
     water_freq_days: wf,
     soil_pref: (safe.soil_pref || '').toString().slice(0, 60),
     summary_md: (safe.summary_md || '').toString().slice(0, 500),
+    emoji: emoji.slice(0, 8),
     beginner_friendly: !!safe.beginner_friendly,
     tasks: cleanTasks,
   };
@@ -122,6 +148,7 @@ const CROP_INFO_SCHEMA = {
     water_freq_days: { type: 'INTEGER' },
     soil_pref: { type: 'STRING' },
     summary_md: { type: 'STRING' },
+    emoji: { type: 'STRING' },
     beginner_friendly: { type: 'BOOLEAN' },
     tasks: {
       type: 'ARRAY',
@@ -143,7 +170,7 @@ const CROP_INFO_SCHEMA = {
   required: [
     'category', 'season_start_month', 'season_end_month',
     'sunlight', 'water_freq_days', 'soil_pref', 'summary_md',
-    'beginner_friendly', 'tasks',
+    'emoji', 'beginner_friendly', 'tasks',
   ],
 };
 
@@ -161,6 +188,9 @@ async function generateCropInfoByAI(nameKo) {
 - sunlight는 "양지" / "반양지" / "음지" 같이 짧게.
 - soil_pref는 "물빠짐 좋은 사질양토" 처럼 짧게 (한 줄).
 - summary_md는 초보자가 읽고 안심할 수 있는 따뜻한 한두 문장 (이모지 1개 정도 OK, 200자 이내).
+- emoji는 이 작목을 가장 잘 표현하는 귀여운 유니코드 이모지 정확히 1글자.
+  예) 토마토 → 🍅, 상추 → 🥬, 마늘 → 🧄, 옥수수 → 🌽, 고추 → 🌶️, 호박 → 🎃, 감자 → 🥔, 당근 → 🥕, 가지 → 🍆, 오이 → 🥒.
+  매칭되는 음식 이모지가 없는 허브/잎채소는 🌿, 콩류는 🫘 또는 🫛, 뿌리채소는 🌱를 사용해.
 - beginner_friendly는 초보가 키우기 쉬우면 true.
 - tasks는 그 작목의 월별 핵심 작업을 6~12개로. task_type은 ${TASK_TYPES.join('/')} 중 하나.
   - month는 1~12 정수, week_in_month는 0(=무관)~5.
@@ -220,12 +250,13 @@ async function applyAICropInfo(client, cropId, ai) {
             water_freq_days = $5,
             soil_pref = $6,
             summary_md = $7,
-            beginner_friendly = $8
-      WHERE id = $9`,
+            emoji = $8,
+            beginner_friendly = $9
+      WHERE id = $10`,
     [
       ai.category, ai.season_start_month, ai.season_end_month,
       ai.sunlight, ai.water_freq_days, ai.soil_pref,
-      ai.summary_md, ai.beginner_friendly, cropId,
+      ai.summary_md, ai.emoji || '', ai.beginner_friendly, cropId,
     ]
   );
   for (const t of ai.tasks) {
@@ -274,10 +305,20 @@ async function initDB() {
       soil_pref TEXT NOT NULL DEFAULT '',
       summary_md TEXT NOT NULL DEFAULT '',
       hero_image_url TEXT NOT NULL DEFAULT '',
+      emoji TEXT NOT NULL DEFAULT '',
       beginner_friendly BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+  // 기존 DB 마이그레이션
+  await pool.query(`ALTER TABLE ${T.crops} ADD COLUMN IF NOT EXISTS emoji TEXT NOT NULL DEFAULT '';`);
+  // 비어있는 emoji를 작물명 사전으로 백필
+  for (const [name, emo] of Object.entries(CROP_EMOJI_MAP)) {
+    await pool.query(
+      `UPDATE ${T.crops} SET emoji = $1 WHERE name_ko = $2 AND (emoji IS NULL OR emoji = '')`,
+      [emo, name]
+    );
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${T.cropTasks} (
       id BIGSERIAL PRIMARY KEY,
@@ -388,6 +429,16 @@ async function initDB() {
       PRIMARY KEY (post_id, user_id)
     );
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ${T.chatMessages} (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES ${T.users}(id) ON DELETE CASCADE,
+      body TEXT NOT NULL DEFAULT '',
+      image_url TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS ${T.chatMessages}_id_idx ON ${T.chatMessages}(id DESC);`);
   dbInitialized = true;
 }
 
@@ -607,7 +658,7 @@ app.get('/api/crops', authOptional, async (req, res) => {
     const where = cs.length ? `WHERE ${cs.join(' AND ')}` : '';
     const r = await pool.query(
       `SELECT id, name_ko, name_en, category, season_start_month, season_end_month,
-              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly
+              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, emoji, beginner_friendly
          FROM ${T.crops} ${where}
         ORDER BY beginner_friendly DESC, name_ko ASC`,
       vs
@@ -755,7 +806,7 @@ app.post('/api/crops/quick', authRequired, async (req, res) => {
     // 이미 같은 이름이 있으면 그대로 반환 (중복 추가 방지)
     const exist = await client.query(
       `SELECT id, name_ko, name_en, category, season_start_month, season_end_month,
-              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly
+              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, emoji, beginner_friendly
          FROM ${T.crops} WHERE name_ko = $1`,
       [name]
     );
@@ -764,13 +815,14 @@ app.post('/api/crops/quick', authRequired, async (req, res) => {
     }
 
     // 1) 일단 사용자 입력만으로 row 생성 (AI 실패해도 작목 등록은 보장)
+    //    AI 응답이 늦거나 실패해도 사전 매핑된 귀여운 이모지가 즉시 붙도록 함
     const ins = await client.query(
       `INSERT INTO ${T.crops}
          (name_ko, name_en, category, season_start_month, season_end_month,
-          sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly)
-       VALUES ($1, '', $2, 1, 12, '', 2, '', $3, '', FALSE)
+          sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, emoji, beginner_friendly)
+       VALUES ($1, '', $2, 1, 12, '', 2, '', $3, '', $4, FALSE)
        RETURNING id`,
-      [name, cat, 'AI가 가이드를 만드는 중이에요…']
+      [name, cat, 'AI가 가이드를 만드는 중이에요…', emojiForCrop(name)]
     );
     const cropId = ins.rows[0].id;
 
@@ -793,7 +845,7 @@ app.post('/api/crops/quick', authRequired, async (req, res) => {
 
     const out = await client.query(
       `SELECT id, name_ko, name_en, category, season_start_month, season_end_month,
-              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, beginner_friendly
+              sunlight, water_freq_days, soil_pref, summary_md, hero_image_url, emoji, beginner_friendly
          FROM ${T.crops} WHERE id = $1`,
       [cropId]
     );
@@ -860,7 +912,7 @@ app.get('/api/calendar', authOptional, async (req, res) => {
     }
     // 이번 달이 시즌인 작목 + 그 작목의 이번 달 작업
     const r = await pool.query(
-      `SELECT c.id, c.name_ko, c.category, c.hero_image_url, c.beginner_friendly,
+      `SELECT c.id, c.name_ko, c.category, c.hero_image_url, c.emoji, c.beginner_friendly,
               json_agg(json_build_object(
                 'id', t.id, 'task_type', t.task_type, 'week_in_month', t.week_in_month,
                 'instructions_md', t.instructions_md
@@ -887,7 +939,7 @@ app.get('/api/me/dashboard', authRequired, async (req, res) => {
     const month = new Date().getMonth() + 1;
     // 1) 내가 키우는 작물의 이번 달 작업
     const myCropTasks = await pool.query(
-      `SELECT uc.id AS user_crop_id, c.id AS crop_id, c.name_ko, c.hero_image_url,
+      `SELECT uc.id AS user_crop_id, c.id AS crop_id, c.name_ko, c.hero_image_url, c.emoji,
               t.task_type, t.week_in_month, t.instructions_md
          FROM ${T.userCrops} uc
          JOIN ${T.crops} c ON c.id = uc.crop_id
@@ -898,7 +950,7 @@ app.get('/api/me/dashboard', authRequired, async (req, res) => {
     );
     // 2) 이번 달 시즌 시작 작목 (모종/파종 추천)
     const seasonTip = await pool.query(
-      `SELECT id, name_ko, hero_image_url, category, beginner_friendly
+      `SELECT id, name_ko, hero_image_url, emoji, category, beginner_friendly
          FROM ${T.crops}
         WHERE season_start_month = $1
         ORDER BY beginner_friendly DESC, name_ko
@@ -931,7 +983,7 @@ app.get('/api/me/dashboard', authRequired, async (req, res) => {
 app.get('/api/me/crops', authRequired, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT uc.*, c.name_ko, c.hero_image_url, c.category
+      `SELECT uc.*, c.name_ko, c.hero_image_url, c.emoji, c.category
          FROM ${T.userCrops} uc
          JOIN ${T.crops} c ON c.id = uc.crop_id
         WHERE uc.user_id = $1
@@ -1499,6 +1551,72 @@ app.post('/api/admin/posts/:id/hide', authRequired, adminRequired, async (req, r
     res.json({ success: true, data: { id, hidden: true } });
   } catch {
     res.status(500).json({ success: false, message: '숨김 실패' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Chat (전체 공개 채팅방)
+// ---------------------------------------------------------------------------
+app.get('/api/chat', authRequired, async (req, res) => {
+  try {
+    const limit = clampInt(req.query.limit, 1, 100, 50);
+    const after = Number.parseInt(req.query.after, 10);
+    const before = Number.parseInt(req.query.before, 10);
+    const params = [];
+    const where = [];
+    if (Number.isInteger(after) && after > 0) { params.push(after); where.push(`m.id > $${params.length}`); }
+    if (Number.isInteger(before) && before > 0) { params.push(before); where.push(`m.id < $${params.length}`); }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    params.push(limit);
+    const r = await pool.query(
+      `SELECT m.id, m.user_id, m.body, m.image_url, m.created_at,
+              u.display_name, u.avatar_emoji
+         FROM ${T.chatMessages} m
+         JOIN ${T.users} u ON u.id = m.user_id
+         ${whereSql}
+        ORDER BY m.id DESC
+        LIMIT $${params.length}`,
+      params
+    );
+    res.json({ success: true, data: r.rows.reverse() });
+  } catch (err) {
+    console.error('chat list failed:', err);
+    res.status(500).json({ success: false, message: '채팅 불러오기 실패' });
+  }
+});
+
+app.post('/api/chat', authRequired, async (req, res) => {
+  try {
+    const { body, image_url } = req.body || {};
+    const t = (body || '').toString().trim();
+    const img = (image_url || '').toString().slice(0, 500);
+    if (!t && !img) return res.status(400).json({ success: false, message: '메시지나 사진을 보내주세요' });
+    const r = await pool.query(
+      `INSERT INTO ${T.chatMessages} (user_id, body, image_url) VALUES ($1, $2, $3) RETURNING id, user_id, body, image_url, created_at`,
+      [req.userId, t.slice(0, 1000), img]
+    );
+    const u = await pool.query(`SELECT display_name, avatar_emoji FROM ${T.users} WHERE id = $1`, [req.userId]);
+    res.status(201).json({ success: true, data: { ...r.rows[0], ...u.rows[0] } });
+  } catch (err) {
+    console.error('chat send failed:', err);
+    res.status(500).json({ success: false, message: '메시지 전송 실패' });
+  }
+});
+
+app.delete('/api/chat/:id', authRequired, async (req, res) => {
+  try {
+    const id = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
+    const own = await pool.query(`SELECT user_id FROM ${T.chatMessages} WHERE id = $1`, [id]);
+    if (!own.rows[0]) return res.status(404).json({ success: false, message: '메시지 없음' });
+    if (own.rows[0].user_id !== req.userId && req.userRole !== 'admin') {
+      return res.status(403).json({ success: false, message: '본인 메시지만 삭제 가능' });
+    }
+    await pool.query(`DELETE FROM ${T.chatMessages} WHERE id = $1`, [id]);
+    res.json({ success: true, data: { id } });
+  } catch (err) {
+    console.error('chat delete failed:', err);
+    res.status(500).json({ success: false, message: '메시지 삭제 실패' });
   }
 });
 

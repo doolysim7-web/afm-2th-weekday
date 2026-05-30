@@ -136,6 +136,7 @@ function Header() {
           <a className="px-2 py-1 rounded-md hover:bg-leaf-50 text-gray-700" href="#/calendar">📅 캘린더</a>
           <a className="px-2 py-1 rounded-md hover:bg-leaf-50 text-gray-700" href="#/crops">🌿 작목</a>
           <a className="px-2 py-1 rounded-md hover:bg-leaf-50 text-gray-700" href="#/board">💬 게시판</a>
+          {user && <a className="px-2 py-1 rounded-md hover:bg-leaf-50 text-gray-700" href="#/chat">💚 채팅방</a>}
           <a className="px-2 py-1 rounded-md hover:bg-leaf-50 text-gray-700" href="#/feed">🌸 둘러보기</a>
         </nav>
         <nav className="flex items-center gap-1 text-sm">
@@ -172,6 +173,7 @@ function Header() {
         <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/crops">🌿 작목</a>
         {user && <a className="flex-1 text-center py-2 hover:bg-leaf-50 font-semibold text-leaf-700" href="#/me/logs">📔 내 일지</a>}
         <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/board">💬 게시판</a>
+        {user && <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/chat">💚 채팅</a>}
         <a className="flex-1 text-center py-2 hover:bg-leaf-50" href="#/feed">🌸 피드</a>
       </nav>
     </header>
@@ -213,10 +215,33 @@ function EmojiPicker({ value, onChange }) {
   );
 }
 
-function CropThumb({ url, name, size = 'md' }) {
+const CROP_EMOJI_MAP = {
+  '상추': '🥬', '깻잎': '🌿', '부추': '🌿', '쪽파': '🧅', '대파': '🧅', '실파': '🧅',
+  '시금치': '🥬', '쑥갓': '🌿', '케일': '🥬', '청경채': '🥬', '겨자채': '🥬',
+  '배추': '🥬', '양배추': '🥬', '브로콜리': '🥦', '미나리': '🌿', '근대': '🌱',
+  '고추': '🌶️', '토마토': '🍅', '방울토마토': '🍅', '가지': '🍆', '오이': '🥒',
+  '호박': '🎃', '애호박': '🎃', '단호박': '🎃', '여주': '🌱', '참외': '🍈', '수박': '🍉',
+  '감자': '🥔', '고구마': '🍠', '당근': '🥕', '무': '🌱', '비트': '🌱', '토란': '🌱',
+  '옥수수': '🌽', '들깨': '🌿', '깨': '🌿',
+  '바질': '🌿', '루꼴라': '🌿', '로즈마리': '🌿', '페퍼민트': '🌿', '민트': '🌿',
+  '치커리': '🌿', '딜': '🌿', '파슬리': '🌿', '셀러리': '🥬',
+  '레몬밤': '🌿', '오레가노': '🌿', '타임': '🌿', '라벤더': '💜',
+  '완두콩': '🫛', '강낭콩': '🫘', '땅콩': '🥜', '딸기': '🍓',
+  '마늘': '🧄', '양파': '🧅', '생강': '🌱',
+};
+function cropEmoji(crop) {
+  if (!crop) return '🌱';
+  const e = (crop.emoji || '').trim();
+  if (e) return e;
+  return CROP_EMOJI_MAP[crop.name_ko] || '🌱';
+}
+
+function CropThumb({ url, emoji, name, size = 'md' }) {
   const cls = size === 'sm' ? 'w-12 h-12' : size === 'lg' ? 'w-32 h-32' : 'w-20 h-20';
+  const txt = size === 'sm' ? 'text-2xl' : size === 'lg' ? 'text-6xl' : 'text-4xl';
   if (url) return <img src={url} alt={name} className={`${cls} rounded-lg object-cover bg-leaf-50 shrink-0`} />;
-  return <div className={`${cls} rounded-lg bg-leaf-50 flex items-center justify-center text-2xl shrink-0`}>🌱</div>;
+  const e = cropEmoji({ emoji, name_ko: name });
+  return <div className={`${cls} rounded-lg bg-leaf-50 flex items-center justify-center ${txt} shrink-0`}>{e}</div>;
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +363,7 @@ function HomePage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {cal.crops.map((c) => (
               <a key={c.id} href={`#/crops/${c.id}`} className="bg-white rounded-2xl border border-leaf-100 p-3 hover:border-leaf-300 transition">
-                <CropThumb url={c.hero_image_url} name={c.name_ko} size="md" />
+                <CropThumb url={c.hero_image_url} emoji={c.emoji} name={c.name_ko} size="md" />
                 <div className="font-semibold mt-2">{c.name_ko} {c.beginner_friendly && <span className="text-xs text-leaf-600">초보♥</span>}</div>
                 <div className="text-xs text-gray-500">{c.category}</div>
                 {c.tasks && c.tasks.length > 0 && (
@@ -416,7 +441,7 @@ function CalendarPage({ month }) {
         <div className="space-y-3">
           {data.crops.map((c) => (
             <div key={c.id} className="bg-white rounded-2xl border border-leaf-100 p-4 flex gap-4">
-              <CropThumb url={c.hero_image_url} name={c.name_ko} size="md" />
+              <CropThumb url={c.hero_image_url} emoji={c.emoji} name={c.name_ko} size="md" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <a href={`#/crops/${c.id}`} className="font-bold text-lg hover:text-leaf-700">{c.name_ko}</a>
@@ -485,7 +510,7 @@ function CropsPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {items.map((c) => (
           <a key={c.id} href={`#/crops/${c.id}`} className="bg-white rounded-2xl border border-leaf-100 p-3 hover:border-leaf-300 transition">
-            <CropThumb url={c.hero_image_url} name={c.name_ko} size="md" />
+            <CropThumb url={c.hero_image_url} emoji={c.emoji} name={c.name_ko} size="md" />
             <div className="font-semibold mt-2 flex items-center gap-1">
               {c.name_ko}
               {c.beginner_friendly && <span className="text-xs text-amber-700">♥</span>}
@@ -550,7 +575,7 @@ function CropDetailPage({ id }) {
         {c.hero_image_url ? (
           <img src={c.hero_image_url} className="w-full aspect-[4/3] object-cover bg-leaf-50" />
         ) : (
-          <div className="w-full aspect-[4/3] bg-leaf-50 flex items-center justify-center text-7xl">🌱</div>
+          <div className="w-full aspect-[4/3] bg-leaf-50 flex items-center justify-center text-9xl">{cropEmoji(c)}</div>
         )}
         <div className="p-5">
           <div className="flex items-center justify-between gap-2">
@@ -1189,23 +1214,49 @@ function LogFormPage({ id }) {
 function LogDetailPage({ id }) {
   const { user } = useAuth();
   const [l, setL] = useState(null); const [err, setErr] = useState('');
-  const [imgIdx, setImgIdx] = useState(0);
+  const [lightbox, setLightbox] = useState(null);
   useEffect(() => {
     (async () => { try { setL(await api(`/api/logs/${id}`)); } catch (e) { setErr(e.message); } })();
   }, [id]);
+  useEffect(() => {
+    if (lightbox === null) return;
+    const onKey = (e) => { if (e.key === 'Escape') setLightbox(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [lightbox]);
   if (err) return <div className="max-w-2xl mx-auto p-4 text-red-600">{err}</div>;
   if (!l) return <div className="max-w-2xl mx-auto p-8 text-center text-gray-400">불러오는 중...</div>;
   const isOwner = user?.id === l.user_id;
+  const imgs = Array.isArray(l.image_urls) ? l.image_urls : [];
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <div className="bg-white rounded-3xl border border-leaf-100 overflow-hidden">
-        {l.image_urls && l.image_urls.length > 0 && (
-          <div className="relative aspect-[4/3] bg-leaf-50">
-            <img src={l.image_urls[imgIdx]} className="w-full h-full object-cover" />
-            {l.image_urls.length > 1 && (
+        {imgs.length > 0 && (
+          <div className="bg-leaf-50">
+            <button type="button" onClick={()=>setLightbox(0)} className="block w-full">
+              <img src={imgs[0]} className="w-full aspect-[4/3] object-cover" />
+            </button>
+            {imgs.length > 1 && (
+              <div className="grid grid-cols-2 gap-1 p-1">
+                {imgs.slice(1).map((u, i) => (
+                  <button key={u + i} type="button" onClick={()=>setLightbox(i+1)} className="block">
+                    <img src={u} className="w-full aspect-square object-cover rounded-md" />
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="px-4 pb-2 text-xs text-gray-500 text-right">📷 {imgs.length}장 · 이미지를 누르면 크게 볼 수 있어요</div>
+          </div>
+        )}
+        {lightbox !== null && imgs[lightbox] && (
+          <div onClick={()=>setLightbox(null)} className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4">
+            <img src={imgs[lightbox]} className="max-w-full max-h-full object-contain" onClick={(e)=>e.stopPropagation()} />
+            <button onClick={()=>setLightbox(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 text-white text-xl">✕</button>
+            {imgs.length > 1 && (
               <>
-                <button onClick={()=>setImgIdx((i)=>(i-1+l.image_urls.length)%l.image_urls.length)} className="absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 text-white">‹</button>
-                <button onClick={()=>setImgIdx((i)=>(i+1)%l.image_urls.length)} className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/40 text-white">›</button>
+                <button onClick={(e)=>{e.stopPropagation(); setLightbox((lightbox - 1 + imgs.length) % imgs.length);}} className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/15 text-white text-2xl">‹</button>
+                <button onClick={(e)=>{e.stopPropagation(); setLightbox((lightbox + 1) % imgs.length);}} className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/15 text-white text-2xl">›</button>
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/80 text-sm">{lightbox + 1} / {imgs.length}</div>
               </>
             )}
           </div>
@@ -1605,7 +1656,7 @@ function MyPage() {
           {myCrops.map((c) => (
             <li key={c.id} className="bg-white rounded-2xl border border-leaf-100 p-3">
               <div className="flex items-start gap-2">
-                <CropThumb url={c.hero_image_url} name={c.name_ko} size="sm" />
+                <CropThumb url={c.hero_image_url} emoji={c.emoji} name={c.name_ko} size="sm" />
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold truncate">{c.name_ko}</div>
                   <div className="text-xs text-gray-500">{Number(c.area_pyeong)}평 · {formatDate(c.planted_at)}</div>
@@ -1779,7 +1830,7 @@ function AdminPage() {
         <ul className="bg-white rounded-2xl border border-leaf-100 divide-y divide-leaf-100">
           {crops.map((c) => (
             <li key={c.id} className="p-3 flex items-center gap-3">
-              <CropThumb url={c.hero_image_url} name={c.name_ko} size="sm" />
+              <CropThumb url={c.hero_image_url} emoji={c.emoji} name={c.name_ko} size="sm" />
               <div className="flex-1 min-w-0">
                 <a href={`#/crops/${c.id}`} className="font-semibold hover:text-leaf-700">{c.name_ko}</a>
                 <div className="text-xs text-gray-500">{c.category} · {c.season_start_month}~{c.season_end_month}월 {c.beginner_friendly && '· 초보♥'}</div>
@@ -1892,6 +1943,182 @@ function DashboardModal() {
 }
 
 // ---------------------------------------------------------------------------
+// Chat — 전체 공개 채팅방
+// ---------------------------------------------------------------------------
+function ChatPage() {
+  const { user, loading } = useAuth();
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState('');
+  const [pendingImage, setPendingImage] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState('');
+  const fileRef = useRef();
+  const scrollRef = useRef();
+  const lastIdRef = useRef(0);
+
+  useEffect(() => { if (!loading && !user) navigate('/login'); }, [loading, user]);
+
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    (async () => {
+      try {
+        const data = await api('/api/chat?limit=50');
+        if (!alive) return;
+        setMessages(data);
+        lastIdRef.current = data.length ? data[data.length - 1].id : 0;
+        setTimeout(() => scrollToBottom(false), 0);
+      } catch (e) { if (alive) setErr(e.message); }
+    })();
+    const timer = setInterval(async () => {
+      try {
+        const after = lastIdRef.current;
+        const fresh = await api(`/api/chat?after=${after}&limit=50`);
+        if (!alive || !fresh.length) return;
+        setMessages((prev) => [...prev, ...fresh]);
+        lastIdRef.current = fresh[fresh.length - 1].id;
+        setTimeout(() => scrollToBottom(true), 0);
+      } catch { /* ignore polling errors */ }
+    }, 3000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [user, scrollToBottom]);
+
+  const onPickFile = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 10 * 1024 * 1024) { setErr('이미지는 10MB 이하'); return; }
+    setUploading(true); setErr('');
+    try { setPendingImage(await uploadImage(f)); }
+    catch (ex) { setErr(ex.message); }
+    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ''; }
+  };
+
+  const send = async (e) => {
+    e?.preventDefault?.();
+    const t = text.trim();
+    if (!t && !pendingImage) return;
+    setSending(true); setErr('');
+    try {
+      const sent = await api('/api/chat', {
+        method: 'POST',
+        body: JSON.stringify({ body: t, image_url: pendingImage }),
+      });
+      setMessages((prev) => [...prev, sent]);
+      lastIdRef.current = Math.max(lastIdRef.current, sent.id);
+      setText(''); setPendingImage('');
+      setTimeout(() => scrollToBottom(true), 0);
+    } catch (ex) { setErr(ex.message); }
+    finally { setSending(false); }
+  };
+
+  const onDelete = async (id) => {
+    if (!confirm('이 메시지를 삭제할까요?')) return;
+    try {
+      await api(`/api/chat/${id}`, { method: 'DELETE' });
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+    } catch (ex) { setErr(ex.message); }
+  };
+
+  if (!user) return null;
+
+  return (
+    <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-xl font-bold">💚 텃밭 채팅방</h1>
+        <span className="text-xs text-gray-500">모두에게 보여요 · 실시간(3초)</span>
+      </div>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto bg-white rounded-2xl border border-leaf-100 p-3 space-y-2">
+        {messages.length === 0 && (
+          <div className="text-center text-sm text-gray-400 py-12">
+            아직 대화가 없어요. 첫 메시지를 남겨보세요 🌱
+          </div>
+        )}
+        {messages.map((m, i) => {
+          const mine = m.user_id === user.id;
+          const prev = messages[i - 1];
+          const showHead = !prev || prev.user_id !== m.user_id ||
+            (new Date(m.created_at) - new Date(prev.created_at) > 5 * 60 * 1000);
+          return (
+            <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'} ${showHead ? 'mt-3' : 'mt-0.5'}`}>
+              {!mine && (
+                <div className="w-8 mr-2 shrink-0 text-2xl text-center">
+                  {showHead ? m.avatar_emoji : ''}
+                </div>
+              )}
+              <div className={`max-w-[75%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
+                {showHead && !mine && (
+                  <div className="text-xs text-gray-600 mb-0.5">{m.display_name}</div>
+                )}
+                <div className={`group relative rounded-2xl px-3 py-2 ${mine ? 'bg-leaf-500 text-white rounded-tr-md' : 'bg-leaf-50 text-gray-800 rounded-tl-md'}`}>
+                  {m.image_url && (
+                    <a href={m.image_url} target="_blank" rel="noopener noreferrer" className="block">
+                      <img src={m.image_url} className={`rounded-lg max-h-64 object-cover ${m.body ? 'mb-1.5' : ''}`} />
+                    </a>
+                  )}
+                  {m.body && <div className="whitespace-pre-wrap break-words text-sm">{m.body}</div>}
+                  {mine && (
+                    <button type="button" onClick={() => onDelete(m.id)}
+                      className="absolute -left-7 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-xs text-gray-400 hover:text-red-500">
+                      🗑
+                    </button>
+                  )}
+                </div>
+                <div className={`text-[10px] text-gray-400 mt-0.5 ${mine ? 'text-right' : 'text-left'}`}>
+                  {formatTimeAgo(m.created_at)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {err && <div className="text-xs text-red-600 mt-2">{err}</div>}
+
+      {pendingImage && (
+        <div className="mt-2 flex items-center gap-2 bg-leaf-50 rounded-xl p-2 border border-leaf-100">
+          <img src={pendingImage} className="w-14 h-14 rounded-lg object-cover" />
+          <span className="text-xs text-gray-600 flex-1">사진을 함께 보낼게요</span>
+          <button onClick={()=>setPendingImage('')} className="text-sm text-gray-500 hover:text-red-500">✕</button>
+        </div>
+      )}
+
+      <form onSubmit={send} className="mt-2 flex gap-2 items-end">
+        <button type="button" onClick={()=>fileRef.current?.click()} disabled={uploading || !!pendingImage}
+          className="h-11 w-11 rounded-xl border border-leaf-200 bg-white flex items-center justify-center text-xl shrink-0">
+          {uploading ? '⏳' : '📷'}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile} className="hidden" />
+        <textarea
+          rows={1}
+          maxLength={1000}
+          value={text}
+          onChange={(e)=>setText(e.target.value)}
+          onKeyDown={(e)=>{
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          placeholder="텃밭 이야기를 나눠보세요…  (Enter 전송, Shift+Enter 줄바꿈)"
+          className="input flex-1 resize-none"
+          style={{ height: '44px', minHeight: '44px', maxHeight: '120px' }}
+        />
+        <button disabled={sending || (!text.trim() && !pendingImage)} className="btn-primary shrink-0">
+          {sending ? '...' : '보내기'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // App / Router
 // ---------------------------------------------------------------------------
 function App() {
@@ -1918,6 +2145,7 @@ function App() {
   else if (path === '/board') body = <BoardPage />;
   else if (path === '/posts/new') body = <PostFormPage />;
   else if (path.match(/^\/posts\/(\d+)$/)) body = <PostDetailPage id={path.match(/^\/posts\/(\d+)$/)[1]} />;
+  else if (path === '/chat') body = <ChatPage />;
   else if (path === '/admin') body = <AdminPage />;
   else body = <EmptyState icon="🌿" title="페이지를 찾지 못했어요" action={<a href="#/" className="inline-block mt-3 text-leaf-700 font-semibold">홈으로</a>} />;
 
