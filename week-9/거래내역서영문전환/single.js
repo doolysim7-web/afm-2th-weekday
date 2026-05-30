@@ -101,8 +101,9 @@ async function initDB() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS ${T.rows}_job_idx ON ${T.rows}(job_id);`);
 
-  // jobs에 user_id 추가 (기존 DB 마이그레이션 안전)
+  // jobs에 user_id, title 추가 (기존 DB 마이그레이션 안전)
   await pool.query(`ALTER TABLE ${T.jobs} ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES ${T.users}(id) ON DELETE SET NULL;`);
+  await pool.query(`ALTER TABLE ${T.jobs} ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';`);
   await pool.query(`CREATE INDEX IF NOT EXISTS ${T.jobs}_user_idx ON ${T.jobs}(user_id, id DESC);`);
 
   dbReady = true;
@@ -432,19 +433,20 @@ function parseWorkbook(buffer, fileName = '') {
 // ----------------------------------------------------------------------------
 // Excel / PDF output
 // ----------------------------------------------------------------------------
-function buildExcelBuffer(rows) {
-  const aoa = [
-    ['No.', 'Date', 'Stock (KR)', 'Stock (EN)', 'Memo (KR)', 'Memo (EN)', 'Quantity', 'Unit Price', 'Amount', 'CCY'],
-    ...rows.map((r, i) => [
-      i + 1, r.date, r.stock_ko, r.stock_en, r.memo_ko, r.memo_en,
-      r.quantity, r.unit_price, r.amount, r.currency,
-    ]),
-  ];
+function buildExcelBuffer(rows, meta = {}) {
+  const aoa = [];
+  if (meta.title) aoa.push([meta.title]);
+  aoa.push(['No.', 'Date', 'Stock (KR)', 'Stock (EN)', 'Memo (KR)', 'Memo (EN)', 'Quantity', 'Unit Price', 'Amount', 'CCY']);
+  rows.forEach((r, i) => aoa.push([
+    i + 1, r.date, r.stock_ko, r.stock_en, r.memo_ko, r.memo_en,
+    r.quantity, r.unit_price, r.amount, r.currency,
+  ]));
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws['!cols'] = [
     { wch: 5 }, { wch: 12 }, { wch: 16 }, { wch: 22 },
     { wch: 14 }, { wch: 22 }, { wch: 10 }, { wch: 12 }, { wch: 14 }, { wch: 6 },
   ];
+  if (meta.title) ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Trade Statement');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -460,7 +462,11 @@ function buildPdfBuffer(rows, meta = {}) {
 
     // ----- Header -----
     doc.fillColor('#1f3a5f').fontSize(18).font('Helvetica-Bold')
-       .text('Trade Statement (English Conversion)', { align: 'left' });
+       .text(meta.title || 'Trade Statement (English Conversion)', { align: 'left' });
+    if (meta.title) {
+      doc.fontSize(10).font('Helvetica').fillColor('#888')
+         .text('Trade Statement (English Conversion)', { align: 'left' });
+    }
     doc.moveDown(0.2);
     doc.fillColor('#666').fontSize(9).font('Helvetica')
        .text(`Generated: ${new Date().toISOString().slice(0, 19).replace('T', ' ')} UTC`);
@@ -697,22 +703,29 @@ app.post('/api/parse-image', authRequired, async (req, res) => {
 // ----------------------------------------------------------------------------
 app.post('/api/convert', authRequired, async (req, res) => {
   try {
-    const { rows, source_type, source_name, source_image_url } = req.body || {};
+    const { rows, source_type, source_name, source_image_url, title } = req.body || {};
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ success: false, message: '변환할 거래 행이 없어요' });
     }
     const { rows: converted, aiNewTerms } = await convertRows(rows);
 
+    const t = (title || '').toString().trim().slice(0, 120);
+    const sn = (source_name || '').toString();
+    // 제목이 비어있으면 파일명에서 확장자 떼서 기본값으로
+    const defaultTitle = sn.replace(/\.[^.]+$/, '').slice(0, 120);
+    const finalTitle = t || defaultTitle || '제목 없는 변환';
+
     const j = await pool.query(
-      `INSERT INTO ${T.jobs} (user_id, source_type, source_name, source_image_url, row_count, ai_new_terms)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      `INSERT INTO ${T.jobs} (user_id, source_type, source_name, source_image_url, row_count, ai_new_terms, title)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [
         req.userId,
         (source_type || 'excel').slice(0, 16),
-        (source_name || '').slice(0, 200),
+        sn.slice(0, 200),
         (source_image_url || '').slice(0, 500),
         converted.length,
         aiNewTerms,
+        finalTitle,
       ]
     );
     const jobId = j.rows[0].id;
@@ -731,7 +744,7 @@ app.post('/api/convert', authRequired, async (req, res) => {
 
     res.json({
       success: true,
-      data: { job_id: jobId, rows: converted, ai_new_terms: aiNewTerms },
+      data: { job_id: jobId, title: finalTitle, rows: converted, ai_new_terms: aiNewTerms },
     });
   } catch (err) {
     console.error('convert failed:', err);
@@ -742,13 +755,21 @@ app.post('/api/convert', authRequired, async (req, res) => {
 // ----------------------------------------------------------------------------
 // API — download English Excel / PDF
 // ----------------------------------------------------------------------------
+function slugFor(title, fallback) {
+  const t = (title || '').toString().trim();
+  // 파일명에 쓸 수 있게 ASCII 안전 문자열로
+  const ascii = t.replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return ascii || fallback;
+}
+
 app.post('/api/download/excel', authRequired, (req, res) => {
   try {
-    const { rows } = req.body || {};
+    const { rows, title } = req.body || {};
     if (!Array.isArray(rows)) return res.status(400).json({ success: false, message: 'rows 필요' });
-    const buf = buildExcelBuffer(rows);
+    const buf = buildExcelBuffer(rows, { title });
+    const fname = slugFor(title, `trade-statement-en-${Date.now()}`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="trade-statement-en-${Date.now()}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}.xlsx"`);
     res.send(buf);
   } catch (err) {
     console.error('excel download failed:', err);
@@ -758,11 +779,12 @@ app.post('/api/download/excel', authRequired, (req, res) => {
 
 app.post('/api/download/pdf', authRequired, async (req, res) => {
   try {
-    const { rows, source_name } = req.body || {};
+    const { rows, source_name, title } = req.body || {};
     if (!Array.isArray(rows)) return res.status(400).json({ success: false, message: 'rows 필요' });
-    const buf = await buildPdfBuffer(rows, { source_name });
+    const buf = await buildPdfBuffer(rows, { source_name, title });
+    const fname = slugFor(title, `trade-statement-en-${Date.now()}`);
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="trade-statement-en-${Date.now()}.pdf"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}.pdf"`);
     res.send(buf);
   } catch (err) {
     console.error('pdf download failed:', err);
@@ -794,7 +816,7 @@ app.get('/api/dictionary', async (req, res) => {
 app.get('/api/me/jobs', authRequired, async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT id, source_type, source_name, source_image_url, row_count, ai_new_terms, created_at
+      `SELECT id, title, source_type, source_name, source_image_url, row_count, ai_new_terms, created_at
          FROM ${T.jobs}
         WHERE user_id = $1
         ORDER BY id DESC LIMIT 200`,
@@ -813,7 +835,7 @@ app.get('/api/jobs/:id', authRequired, async (req, res) => {
     const id = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(id)) return res.status(400).json({ success: false, message: 'invalid id' });
     const j = await pool.query(
-      `SELECT id, user_id, source_type, source_name, source_image_url, row_count, ai_new_terms, created_at
+      `SELECT id, user_id, title, source_type, source_name, source_image_url, row_count, ai_new_terms, created_at
          FROM ${T.jobs} WHERE id = $1`,
       [id]
     );
@@ -841,7 +863,7 @@ app.get('/api/jobs', authRequired, async (req, res) => {
       return res.status(403).json({ success: false, message: '관리자 전용 — /api/me/jobs를 사용하세요' });
     }
     const r = await pool.query(
-      `SELECT j.id, j.source_type, j.source_name, j.row_count, j.ai_new_terms, j.created_at, u.display_name
+      `SELECT j.id, j.title, j.source_type, j.source_name, j.row_count, j.ai_new_terms, j.created_at, u.display_name
          FROM ${T.jobs} j LEFT JOIN ${T.users} u ON u.id = j.user_id
         ORDER BY j.id DESC LIMIT 200`
     );
