@@ -1,7 +1,7 @@
 {
   "version": 2,
   "builds": [
-    { "src": "single.js", "use": "@vercel/node", "config": { "includeFiles": "documents/**" } },
+    { "src": "single.js", "use": "@vercel/node", "config": { "includeFiles": "{documents,screenshot}/**" } },
     { "src": "index.html", "use": "@vercel/static" }
   ],
   "rewrites": [

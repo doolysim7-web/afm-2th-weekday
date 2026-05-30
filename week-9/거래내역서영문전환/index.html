@@ -198,7 +198,7 @@ function Card({ children, className = '' }) {
   );
 }
 
-function Header({ onOpenDoc, onOpenAuth }) {
+function Header({ onOpenDoc, onOpenAuth, onOpenGallery }) {
   const { user, logout } = useAuth();
   return (
     <header className="border-b border-gold-100 bg-white/80 backdrop-blur sticky top-0 z-30">
@@ -213,6 +213,8 @@ function Header({ onOpenDoc, onOpenAuth }) {
           {user && <a className="nav-link" href="#/history">📜 변환 이력</a>}
           <button className="nav-link" onClick={() => onOpenDoc('mission')}>📋 기획서</button>
           <button className="nav-link" onClick={() => onOpenDoc('dev')}>🛠️ 개발문서</button>
+          <button className="nav-link" onClick={() => onOpenGallery('documents')}>📂 데모 자료</button>
+          <button className="nav-link" onClick={() => onOpenGallery('screenshot')}>🖼️ 작업 캡처</button>
           {user ? (
             <div className="flex items-center gap-1 ml-2 pl-3 border-l border-gold-100">
               <span className="text-xs text-gray-500 hidden sm:inline">{user.display_name}</span>
@@ -291,6 +293,87 @@ function AuthModal({ mode, onClose, onSwitch }) {
             )}
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function GalleryModal({ folder, onClose }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState('');
+  const [lightbox, setLightbox] = useState(null);
+  useEffect(() => {
+    if (!folder) return;
+    setData(null); setErr(''); setLightbox(null);
+    api(`/api/screenshots/${folder}`).then(setData).catch((e) => setErr(e.message));
+  }, [folder]);
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        if (lightbox !== null) setLightbox(null);
+        else onClose();
+      }
+    };
+    if (folder) window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [folder, lightbox, onClose]);
+  if (!folder) return null;
+  const files = data?.files || [];
+  return (
+    <div className="modal-backdrop fade-in" onClick={onClose}>
+      <div className="modal-panel" style={{ maxWidth: 1080 }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <div className="font-bold text-ink-700 text-lg">{data?.label || '🖼️ 갤러리'}</div>
+            <div className="text-xs text-gray-500 mt-0.5">{folder}/ 폴더 · {files.length}개 이미지 · 클릭하면 크게 볼 수 있어요</div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+        </div>
+        <div className="modal-body">
+          {err && <div className="text-sm text-red-600">⚠️ {err}</div>}
+          {!data && !err && <div className="text-center text-gray-400 py-12">불러오는 중...</div>}
+          {data && files.length === 0 && <div className="text-center text-gray-400 py-12">아직 이미지가 없어요</div>}
+          {data && files.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {files.map((f, i) => {
+                const url = `/api/screenshots/${folder}/file?name=${encodeURIComponent(f.name)}`;
+                return (
+                  <button key={f.name} onClick={() => setLightbox(i)}
+                    className="text-left bg-cream-50 rounded-xl border border-gold-100 overflow-hidden hover:border-ink-700 transition">
+                    <img src={url} alt={f.name} loading="lazy"
+                      className="w-full h-40 object-cover bg-white" />
+                    <div className="px-2.5 py-2 border-t border-gold-100">
+                      <div className="text-xs font-semibold text-ink-700 truncate" title={f.name}>{f.name}</div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        {(f.size / 1024).toFixed(0)} KB · {new Date(f.mtime).toLocaleDateString('ko-KR')}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {lightbox !== null && files[lightbox] && (
+          <div onClick={() => setLightbox(null)}
+            className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4">
+            <img src={`/api/screenshots/${folder}/file?name=${encodeURIComponent(files[lightbox].name)}`}
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()} />
+            <button onClick={() => setLightbox(null)} className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 text-white text-xl">✕</button>
+            {files.length > 1 && (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); setLightbox((lightbox - 1 + files.length) % files.length); }}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/15 text-white text-2xl">‹</button>
+                <button onClick={(e) => { e.stopPropagation(); setLightbox((lightbox + 1) % files.length); }}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-white/15 text-white text-2xl">›</button>
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/80 text-sm">
+                  {lightbox + 1} / {files.length} · {files[lightbox].name}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -916,6 +999,7 @@ function App() {
   const [err, setErr]         = useState('');
   const [docName, setDocName] = useState(null);
   const [authMode, setAuthMode] = useState(null);   // 'login' | 'signup' | null
+  const [gallery, setGallery] = useState(null);     // 'documents' | 'screenshot' | null
 
   // Clear in-flight state when navigating away from home
   useEffect(() => {
@@ -953,7 +1037,7 @@ function App() {
 
   return (
     <div className="min-h-full pb-16">
-      <Header onOpenDoc={setDocName} onOpenAuth={setAuthMode} />
+      <Header onOpenDoc={setDocName} onOpenAuth={setAuthMode} onOpenGallery={setGallery} />
       <main className="max-w-6xl mx-auto px-5 py-6">
         {body}
 
@@ -978,6 +1062,7 @@ function App() {
 
       <DocsModal name={docName} onClose={() => setDocName(null)} />
       <AuthModal mode={authMode} onClose={() => setAuthMode(null)} onSwitch={setAuthMode} />
+      <GalleryModal folder={gallery} onClose={() => setGallery(null)} />
     </div>
   );
 }

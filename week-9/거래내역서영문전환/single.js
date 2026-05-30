@@ -874,6 +874,52 @@ app.get('/api/jobs', authRequired, async (req, res) => {
 });
 
 // ----------------------------------------------------------------------------
+// Screenshots gallery — documents/ 와 screenshot/ 폴더의 이미지를 노출
+// ----------------------------------------------------------------------------
+const GALLERY_FOLDERS = {
+  documents: { dir: 'documents', label: '📂 데모·문서 캡처' },
+  screenshot: { dir: 'screenshot', label: '🖼️ 작업 캡처' },
+};
+const IMG_RE = /\.(png|jpg|jpeg|webp)$/i;
+
+app.get('/api/screenshots/:folder', (req, res) => {
+  const meta = GALLERY_FOLDERS[req.params.folder];
+  if (!meta) return res.status(404).json({ success: false, message: '폴더 없음' });
+  try {
+    const dir = path.join(__dirname, meta.dir);
+    const files = fs.readdirSync(dir)
+      .filter((f) => IMG_RE.test(f))
+      .map((f) => {
+        const st = fs.statSync(path.join(dir, f));
+        return { name: f, size: st.size, mtime: st.mtimeMs };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    res.json({ success: true, data: { folder: req.params.folder, label: meta.label, files } });
+  } catch (err) {
+    console.error('gallery list failed:', err);
+    res.status(500).json({ success: false, message: '갤러리 목록 실패' });
+  }
+});
+
+app.get('/api/screenshots/:folder/file', (req, res) => {
+  const meta = GALLERY_FOLDERS[req.params.folder];
+  const name = (req.query.name || '').toString();
+  if (!meta) return res.status(404).end();
+  if (!IMG_RE.test(name) || name.includes('..') || name.includes('/')) return res.status(400).end();
+  const dir = path.join(__dirname, meta.dir);
+  // macOS는 NFD, Linux/Vercel은 NFC로 저장될 수 있음 → 정규화 매칭
+  const targetNFC = name.normalize('NFC');
+  const targetNFD = name.normalize('NFD');
+  let match = null;
+  try {
+    const entries = fs.readdirSync(dir);
+    match = entries.find((f) => f === name || f.normalize('NFC') === targetNFC || f.normalize('NFD') === targetNFD);
+  } catch { /* ignore */ }
+  if (!match) return res.status(404).end();
+  res.sendFile(path.join(dir, match));
+});
+
+// ----------------------------------------------------------------------------
 // Docs (MISSION.md / DEV.md) — markdown 그대로 반환
 // ----------------------------------------------------------------------------
 const DOCS = {
